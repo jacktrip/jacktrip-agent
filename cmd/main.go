@@ -106,6 +106,9 @@ const (
 	// PathToSuperColliderStartupFile is the path to SuperCollider startup file
 	PathToSuperColliderStartupFile = "/tmp/jacktrip.scd"
 
+	// PathToAvahiServiceFile is the path to the avahi service file for jacktrip-agent
+	PathToAvahiServiceFile = "/tmp/avahi/services/jacktrip-agent.service"
+
 	// JackDeviceConfigTemplate is the template used to generate /tmp/default/jack file on raspberry pi devices
 	JackDeviceConfigTemplate = "JACK_OPTS=-dalsa -dhw:%s --rate %d --period %d\n"
 
@@ -215,13 +218,16 @@ func runOnDevice(apiOrigin string) {
 	wg.Add(1)
 	go runHTTPServer(&wg, router)
 
-	// start ping server to send pings and update agent config
+	// update avahi service config and restart daemon
 	ping := client.AgentPing{
 		AgentCredentials: credentials,
 		MAC:              mac,
 		Version:          getPatchVersion(),
 		Type:             soundDeviceType,
 	}
+	updateAvahiServiceConfig(ping, "starting")
+
+	// start ping server to send pings and update agent config
 	wg.Add(1)
 	go runPingServer(&wg, ping, apiOrigin)
 
@@ -370,6 +376,7 @@ func runPingServer(wg *sync.WaitGroup, ping client.AgentPing, apiOrigin string) 
 
 	log.Info("Starting agent ping server")
 
+	lastStatus := "starting"
 	config := client.AgentConfig{}
 	lastConfig := config
 	getPingStats(&ping, nil)
@@ -379,6 +386,10 @@ func runPingServer(wg *sync.WaitGroup, ping client.AgentPing, apiOrigin string) 
 		pingBytes, err := json.Marshal(ping)
 		if err != nil {
 			log.Error(err, "Failed to marshal agent ping request")
+			if ping.CloudID == "" && lastStatus != "error" {
+				updateAvahiServiceConfig(ping, "error")
+				lastStatus = "error"
+			}
 			panic(err)
 		}
 
@@ -386,6 +397,10 @@ func runPingServer(wg *sync.WaitGroup, ping client.AgentPing, apiOrigin string) 
 		r, err := http.Post(fmt.Sprintf("%s%s", apiOrigin, AgentPingURL), "application/json", bytes.NewReader(pingBytes))
 		if err != nil {
 			log.Error(err, "Failed to send agent ping request")
+			if ping.CloudID == "" && lastStatus != "error" {
+				updateAvahiServiceConfig(ping, "error")
+				lastStatus = "error"
+			}
 			time.Sleep(time.Second * AgentPingInterval)
 			continue
 		}
@@ -394,6 +409,10 @@ func runPingServer(wg *sync.WaitGroup, ping client.AgentPing, apiOrigin string) 
 		// check response status
 		if r.StatusCode != http.StatusOK {
 			log.Info("Bad response from agent ping", "status", r.StatusCode)
+			if ping.CloudID == "" && lastStatus != "error" {
+				updateAvahiServiceConfig(ping, "error")
+				lastStatus = "error"
+			}
 			time.Sleep(time.Second * AgentPingInterval)
 			continue
 		}
@@ -402,6 +421,10 @@ func runPingServer(wg *sync.WaitGroup, ping client.AgentPing, apiOrigin string) 
 		decoder := json.NewDecoder(r.Body)
 		if err := decoder.Decode(&config); err != nil {
 			log.Error(err, "Failed to unmarshal agent ping response")
+			if ping.CloudID == "" && lastStatus != "error" {
+				updateAvahiServiceConfig(ping, "error")
+				lastStatus = "error"
+			}
 			time.Sleep(time.Second * AgentPingInterval)
 			continue
 		}
@@ -444,6 +467,18 @@ func runPingServer(wg *sync.WaitGroup, ping client.AgentPing, apiOrigin string) 
 			}
 
 			lastConfig = config
+		}
+
+		// update device status in avahi service config, if necessary
+		if ping.CloudID == "" {
+			status := "not connected"
+			if config.Enabled {
+				status = "connected"
+			}
+			if lastStatus != status {
+				updateAvahiServiceConfig(ping, status)
+				lastStatus = status
+			}
 		}
 
 		if ping.CloudID == "" && config.Enabled && config.Host != "" {
@@ -834,6 +869,38 @@ func updateJamulusIni(config client.AgentConfig) {
 
 	writeToFile()
 	writer.Flush()
+}
+
+// updateAvahiServiceConfig generates a new /etc/avahi/services/jacktrip-agent.service file
+func updateAvahiServiceConfig(ping client.AgentPing, status string) {
+	// ensure config directory exists
+	err := os.MkdirAll("/tmp/avahi/services", 0755)
+	if err != nil {
+		log.Error(err, "Failed to create directory", "path", "/tmp/avahi/services")
+		return
+	}
+
+	apiHash := client.GetAPIHash(ping.APISecret)
+	avahiServiceConfig := fmt.Sprintf(`<?xml version="1.0" standalone='no'?><!--*-nxml-*-->
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<service-group>
+	<name replace-wildcards="yes">JackTrip Agent on %%h</name>
+	<service>
+		<type>_http._tcp</type>
+		<port>80</port>
+		<txt-record value-format="text">status=%s</txt-record>
+		<txt-record value-format="text">version=%s</txt-record>
+		<txt-record value-format="text">mac=%s</txt-record>
+		<txt-record value-format="text">apiHash=%s</txt-record>
+	</service>
+</service-group>
+`, status, ping.Version, ping.MAC, apiHash)
+
+	err = ioutil.WriteFile(PathToAvahiServiceFile, []byte(avahiServiceConfig), 0644)
+	if err != nil {
+		log.Error(err, "Failed to save avahi service config", "path", PathToAvahiServiceFile)
+		return
+	}
 }
 
 // restartAllServices is used to restart all of the managed systemd services

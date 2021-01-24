@@ -14,10 +14,13 @@
 
 .PHONY: all agent fmt lint
 
-all: lint fmt agent
+all: lint fmt agent-amd64 agent-arm
 
-agent:
-	@go build -o jacktrip-agent ./cmd
+agent-amd64:
+	@GOOS=linux GOARCH=amd64 go build -o jacktrip-agent-amd64 ./cmd
+
+agent-arm:
+	@GOOS=linux GOARCH=arm go build -o jacktrip-agent-arm ./cmd
 
 fmt:
 	@gofmt -l -w `find ./ -name "*.go"`
