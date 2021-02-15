@@ -195,12 +195,14 @@ func runOnDevice(apiOrigin string) {
 	soundDeviceType = getSoundDeviceType()
 	log.Info("Detected sound device", "name", soundDeviceName, "type", soundDeviceType)
 
-	// restore alsa card state
+	// restore alsa card state, if saved state exists
 	alsaStateFile := fmt.Sprintf("%s/asound.%s.state", AgentLibDir, soundDeviceType)
-	log.Info("Restoring ALSA state", "file", alsaStateFile)
-	cmd := exec.Command("/usr/sbin/alsactl", "restore", "--file", alsaStateFile)
-	if err := cmd.Run(); err != nil {
-		log.Error(err, "Unable to restore ALSA state", "file", alsaStateFile)
+	if _, err := os.Stat(alsaStateFile); err == nil {
+		log.Info("Restoring ALSA state", "file", alsaStateFile)
+		cmd := exec.Command("/usr/sbin/alsactl", "restore", "--file", alsaStateFile)
+		if err := cmd.Run(); err != nil {
+			log.Error(err, "Unable to restore ALSA state", "file", alsaStateFile)
+		}
 	}
 
 	// get mac and credentials
@@ -212,9 +214,16 @@ func runOnDevice(apiOrigin string) {
 
 	// start HTTP server to redirect requests
 	router := mux.NewRouter()
+	router.HandleFunc("/ping", handlePingRequest).Methods("GET")
+	router.PathPrefix("/info").Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handleDeviceInfoRequest(mac, credentials, w, r)
+	})).Methods("GET")
 	router.PathPrefix("/").Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handleDeviceRedirect(mac, credentials, w, r)
 	})).Methods("GET")
+	router.PathPrefix("/").Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		OptionsGetOnly(w, r)
+	})).Methods("OPTIONS")
 	wg.Add(1)
 	go runHTTPServer(&wg, router)
 
@@ -245,6 +254,9 @@ func runOnServer(apiOrigin string) {
 	// start HTTP server to respond to pings
 	router := mux.NewRouter()
 	router.HandleFunc("/ping", handlePingRequest).Methods("GET")
+	router.PathPrefix("/").Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		OptionsGetOnly(w, r)
+	})).Methods("OPTIONS")
 	wg.Add(1)
 	go runHTTPServer(&wg, router)
 
@@ -1059,15 +1071,41 @@ func runHTTPServer(wg *sync.WaitGroup, router *mux.Router) error {
 	return err
 }
 
+// handleDeviceInfoRequest returns information about a device
+func handleDeviceInfoRequest(mac string, credentials client.AgentCredentials, w http.ResponseWriter, r *http.Request) {
+	apiHash := client.GetAPIHash(credentials.APISecret)
+	deviceInfo := struct {
+		APIPrefix string `json:"apiPrefix"`
+		APIHash   string `json:"apiHash"`
+		MAC       string `json:"mac"`
+	}{
+		APIPrefix: credentials.APIPrefix,
+		APIHash:   apiHash,
+		MAC:       mac,
+	}
+	RespondJSON(w, http.StatusOK, deviceInfo)
+}
+
 // handleDeviceRedirect redirects all requests to devices in jacktrip web application
 func handleDeviceRedirect(mac string, credentials client.AgentCredentials, w http.ResponseWriter, r *http.Request) {
 	apiHash := client.GetAPIHash(credentials.APISecret)
 	w.Header().Set("Location", fmt.Sprintf(DevicesRedirectURL, mac, credentials.APIPrefix, apiHash))
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(http.StatusSeeOther)
 }
 
 // handlePingRequest upgrades ping request to a websocket responder
 func handlePingRequest(w http.ResponseWriter, r *http.Request) {
+	// return success if no request for websocket
+	if r.Header.Get("Connection") != "Upgrade" || r.Header.Get("Upgrade") != "websocket" {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"OK"}`))
+		return
+	}
+
+	// upgrade to websocket
 	upgrader := websocket.Upgrader{}
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -1087,4 +1125,27 @@ func handlePingRequest(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
+}
+
+// OptionsGetOnly responds with a list of allow methods for Get only
+func OptionsGetOnly(w http.ResponseWriter, r *http.Request) {
+	allowMethods := "GET, OPTIONS"
+	w.Header().Set("Allow", allowMethods)
+	w.Header().Set("Access-Control-Allow-Methods", allowMethods)
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.WriteHeader(http.StatusOK)
+}
+
+// RespondJSON makes the response with payload as json format
+func RespondJSON(w http.ResponseWriter, status int, payload interface{}) {
+	response, err := json.Marshal(payload)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.WriteHeader(status)
+	w.Write([]byte(response))
 }
