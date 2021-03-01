@@ -137,6 +137,10 @@ const (
 	// See https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-metadata.html
 	EC2InstanceIDURL = "http://169.254.169.254/latest/meta-data/instance-id"
 
+	// GCloudInstanceIDURL is url using Google Cloud metadata service that returns the instance name
+	// See https://cloud.google.com/compute/docs/storing-retrieving-metadata
+	GCloudInstanceIDURL = "http://metadata.google.internal/computeMetadata/v1/instance/name"
+
 	// PathToMACAddress is the path to ethernet device MAC address, via Linux kernel
 	PathToMACAddress = "/sys/class/net/eth0/address"
 
@@ -283,18 +287,18 @@ func runOnServer(apiOrigin string) {
 func getCloudID() string {
 	// send request to get instance-id from EC2 metadata
 	r, err := http.Get(EC2InstanceIDURL)
-	if err != nil {
-		log.Error(err, "Failed to retrieve instance-id from metadata service")
-		panic(err)
+	if err != nil || r.StatusCode != http.StatusOK {
+		// try again using Google Cloud metadata
+		client := &http.Client{}
+		req, _ := http.NewRequest("GET", GCloudInstanceIDURL, nil)
+		req.Header.Set("Metadata-Flavor", "Google")
+		r, err = client.Do(req)
+		if err != nil || r.StatusCode != http.StatusOK {
+			log.Error(err, "Failed to retrieve instance-id from metadata service")
+			panic(err)
+		}
 	}
 	defer r.Body.Close()
-
-	// check response status
-	if r.StatusCode != http.StatusOK {
-		err = errors.New("Failed to retrieve instance-id from metadata service")
-		log.Error(err, "Bad status code", "status", r.StatusCode)
-		panic(err)
-	}
 
 	// decode config from response
 	bodyBytes, err := ioutil.ReadAll(r.Body)
