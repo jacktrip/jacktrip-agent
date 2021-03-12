@@ -141,6 +141,10 @@ const (
 	// See https://cloud.google.com/compute/docs/storing-retrieving-metadata
 	GCloudInstanceIDURL = "http://metadata.google.internal/computeMetadata/v1/instance/name"
 
+	// AzureInstanceIDURL is url using Azure metadata service that returns the instance name
+	// See https://docs.microsoft.com/en-us/azure/virtual-machines/linux/instance-metadata-service?tabs=linux
+	AzureInstanceIDURL = "http://169.254.169.254/metadata/instance/compute/name?api-version=2017-08-01&format=text"
+
 	// PathToMACAddress is the path to ethernet device MAC address, via Linux kernel
 	PathToMACAddress = "/sys/class/net/eth0/address"
 
@@ -294,8 +298,14 @@ func getCloudID() string {
 		req.Header.Set("Metadata-Flavor", "Google")
 		r, err = client.Do(req)
 		if err != nil || r.StatusCode != http.StatusOK {
-			log.Error(err, "Failed to retrieve instance-id from metadata service")
-			panic(err)
+			// try again using Azure metadata
+			req, _ = http.NewRequest("GET", AzureInstanceIDURL, nil)
+			req.Header.Set("Metadata", "true")
+			r, err = client.Do(req)
+			if err != nil || r.StatusCode != http.StatusOK {
+				log.Error(err, "Failed to retrieve instance-id from metadata service")
+				panic(err)
+			}
 		}
 	}
 	defer r.Body.Close()
