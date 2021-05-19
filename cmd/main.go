@@ -1,4 +1,4 @@
-// Copyright 2020 20hz, LLC
+// Copyright 2020-2021 JackTrip Labs, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -110,7 +110,7 @@ const (
 	PathToAvahiServiceFile = "/tmp/avahi/services/jacktrip-agent.service"
 
 	// JackDeviceConfigTemplate is the template used to generate /tmp/default/jack file on raspberry pi devices
-	JackDeviceConfigTemplate = "JACK_OPTS=-dalsa -dhw:%s --rate %d --period %d\n"
+	JackDeviceConfigTemplate = "JACK_OPTS=-dalsa -dhw:%s --rate %d --period %d --udprt\n"
 
 	// JackServerConfigTemplate is the template used to generate /tmp/default/jack file on audio servers
 	JackServerConfigTemplate = "JACK_OPTS=-d dummy --rate %d --period %d\n"
@@ -119,7 +119,7 @@ const (
 	JackTripDeviceConfigTemplate = "JACKTRIP_OPTS=-t -z -n %d -C %s --peerport %d --bindport %d --clientname hubserver --remotename %s %s\n"
 
 	// JackTripServerConfigTemplate is the template used to generate /tmp/default/jacktrip file on audio servers
-	JackTripServerConfigTemplate = "JACKTRIP_OPTS=-S -t -z --bindport %d --nojackportsconnect %s\n"
+	JackTripServerConfigTemplate = "JACKTRIP_OPTS=-S -t -z --bindport %d --nojackportsconnect --broadcast 1024 %s\n"
 
 	// JamulusDeviceConfigTemplate is the template used to generate /tmp/default/jamulus file on raspberry pi devices
 	JamulusDeviceConfigTemplate = "JAMULUS_OPTS=-n -i /tmp/jamulus.ini -c %s:%d\n"
