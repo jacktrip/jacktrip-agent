@@ -21,6 +21,7 @@ import (
 	"io/ioutil"
 	"os"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/coreos/go-systemd/v22/dbus"
@@ -193,7 +194,7 @@ func restartAllServices(config client.AgentConfig, isServer bool) {
 
 	// stop any managed services that are active
 	units, err := conn.ListUnitsByNames([]string{JackServiceName,
-		SuperColliderServiceName, SCLangServiceName, JackAutoconnectServiceName,
+		SCSynthServiceName, SupernovaServiceName, SCLangServiceName, JackAutoconnectServiceName,
 		JackTripServiceName, JamulusServiceName, JamulusServerServiceName, JamulusBridgeServiceName})
 	if err != nil {
 		log.Error(err, "Failed to get status of managed services")
@@ -218,7 +219,11 @@ func restartAllServices(config client.AgentConfig, isServer bool) {
 	case client.JackTrip:
 		servicesToStart = []string{JackServiceName, JackTripServiceName}
 		if isServer {
-			servicesToStart = append(servicesToStart, SuperColliderServiceName, SCLangServiceName, JackAutoconnectServiceName)
+			if runtime.NumCPU() > 50 {
+				servicesToStart = append(servicesToStart, SCSynthServiceName, SCLangServiceName, JackAutoconnectServiceName)
+			} else {
+				servicesToStart = append(servicesToStart, SupernovaServiceName, SCLangServiceName, JackAutoconnectServiceName)
+			}
 		}
 	case client.Jamulus:
 		if isServer {
@@ -230,7 +235,11 @@ func restartAllServices(config client.AgentConfig, isServer bool) {
 		if isServer {
 			servicesToStart = []string{JackServiceName, JackTripServiceName}
 			servicesToStart = append(servicesToStart, JamulusServerServiceName, JamulusBridgeServiceName)
-			servicesToStart = append(servicesToStart, SuperColliderServiceName, SCLangServiceName, JackAutoconnectServiceName)
+			if runtime.NumCPU() > 50 {
+				servicesToStart = append(servicesToStart, SCSynthServiceName, SCLangServiceName, JackAutoconnectServiceName)
+			} else {
+				servicesToStart = append(servicesToStart, SupernovaServiceName, SCLangServiceName, JackAutoconnectServiceName)
+			}
 		} else {
 			switch config.Quality {
 			case 0:

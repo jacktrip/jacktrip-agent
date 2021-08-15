@@ -32,8 +32,11 @@ const (
 	// MaxClientsPerProcessor is the number of JackTrip clients to support per logical processor
 	MaxClientsPerProcessor = 6 // add 1 (20%) for Jamulus bridge, etc
 
-	// SuperColliderServiceName is the name of the systemd service for the SuperCollider server
-	SuperColliderServiceName = "scsynth.service"
+	// SCSynthServiceName is the name of the systemd service for the SuperCollider scsynth server
+	SCSynthServiceName = "scsynth.service"
+
+	// SupernovaServiceName is the name of the systemd service for the SuperCollider supernova server
+	SupernovaServiceName = "supernova.service"
 
 	// SCLangServiceName is the name of the systemd service for the SuperCollider language runtime
 	SCLangServiceName = "sclang.service"
