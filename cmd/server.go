@@ -33,22 +33,13 @@ const (
 	MaxClientsPerProcessor = 6 // add 1 (20%) for Jamulus bridge, etc
 
 	// SuperColliderServiceName is the name of the systemd service for the SuperCollider server
-	SuperColliderServiceName = "supernova.service"
+	SuperColliderServiceName = "scsynth.service"
 
 	// SCLangServiceName is the name of the systemd service for the SuperCollider language runtime
 	SCLangServiceName = "sclang.service"
 
 	// JackAutoconnectServiceName is the name of the systemd service for connecting jack clients
 	JackAutoconnectServiceName = "jack-autoconnect.service"
-
-	// JackPlumbingServiceName is the name of the systemd service for connecting jack clients
-	JackPlumbingServiceName = "jack-plumbing.service"
-
-	// JackTripReceiveServiceName is the name of the systemd service for connecting jack client inputs
-	JackTripReceiveServiceName = "jacktrip-receive.service"
-
-	// JackTripSendServiceName is the name of the systemd service for connecting jack client outputs
-	JackTripSendServiceName = "jacktrip-send.service"
 
 	// JamulusServerServiceName is the name of the systemd service for the Jamulus server
 	JamulusServerServiceName = "jamulus-server.service"

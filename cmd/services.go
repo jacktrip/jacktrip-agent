@@ -21,7 +21,6 @@ import (
 	"io/ioutil"
 	"os"
 	"regexp"
-	"runtime"
 	"strings"
 
 	"github.com/coreos/go-systemd/v22/dbus"
@@ -193,8 +192,8 @@ func restartAllServices(config client.AgentConfig, isServer bool) {
 	defer conn.Close()
 
 	// stop any managed services that are active
-	units, err := conn.ListUnitsByNames([]string{JackServiceName, SuperColliderServiceName, SCLangServiceName,
-		JackAutoconnectServiceName, JackPlumbingServiceName, JackTripReceiveServiceName, JackTripSendServiceName,
+	units, err := conn.ListUnitsByNames([]string{JackServiceName,
+		SuperColliderServiceName, SCLangServiceName, JackAutoconnectServiceName,
 		JackTripServiceName, JamulusServiceName, JamulusServerServiceName, JamulusBridgeServiceName})
 	if err != nil {
 		log.Error(err, "Failed to get status of managed services")
@@ -219,11 +218,7 @@ func restartAllServices(config client.AgentConfig, isServer bool) {
 	case client.JackTrip:
 		servicesToStart = []string{JackServiceName, JackTripServiceName}
 		if isServer {
-			if runtime.NumCPU() > 36 {
-				servicesToStart = append(servicesToStart, JackTripReceiveServiceName, JackTripSendServiceName, JackPlumbingServiceName)
-			} else {
-				servicesToStart = append(servicesToStart, SuperColliderServiceName, SCLangServiceName, JackAutoconnectServiceName)
-			}
+			servicesToStart = append(servicesToStart, SuperColliderServiceName, SCLangServiceName, JackAutoconnectServiceName)
 		}
 	case client.Jamulus:
 		if isServer {
@@ -235,11 +230,7 @@ func restartAllServices(config client.AgentConfig, isServer bool) {
 		if isServer {
 			servicesToStart = []string{JackServiceName, JackTripServiceName}
 			servicesToStart = append(servicesToStart, JamulusServerServiceName, JamulusBridgeServiceName)
-			if runtime.NumCPU() > 36 {
-				servicesToStart = append(servicesToStart, JackTripReceiveServiceName, JackTripSendServiceName, JackPlumbingServiceName)
-			} else {
-				servicesToStart = append(servicesToStart, SuperColliderServiceName, SCLangServiceName, JackAutoconnectServiceName)
-			}
+			servicesToStart = append(servicesToStart, SuperColliderServiceName, SCLangServiceName, JackAutoconnectServiceName)
 		} else {
 			switch config.Quality {
 			case 0:
