@@ -61,12 +61,16 @@ func handlePingRequest(w http.ResponseWriter, r *http.Request) {
 	for {
 		mt, message, err := c.ReadMessage()
 		if err != nil {
-			log.Error(err, "Unable to read websocket message")
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) != false {
+				log.Error(err, "Unable to read websocket message")
+			}
 			break
 		}
 		err = c.WriteMessage(mt, message)
 		if err != nil {
-			log.Error(err, "Unable to write websocket message")
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) != false {
+				log.Error(err, "Unable to write websocket message")
+			}
 			break
 		}
 	}

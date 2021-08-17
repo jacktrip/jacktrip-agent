@@ -257,7 +257,6 @@ func restartAllServices(config client.AgentConfig, isServer bool) {
 		err = startService(conn, serviceName)
 		if err != nil {
 			log.Error(err, "Unable to start service", "name", serviceName)
-			panic(err)
 		}
 	}
 }
@@ -290,6 +289,7 @@ func startService(conn *dbus.Conn, name string) error {
 
 	reschan := make(chan string)
 	_, err := conn.StartUnit(name, "replace", reschan)
+
 	if err != nil {
 		return fmt.Errorf("failed to start %s: job status=%s", name, err.Error())
 	}
@@ -298,7 +298,7 @@ func startService(conn *dbus.Conn, name string) error {
 	if jobStatus != "done" {
 		return fmt.Errorf("failed to start %s: job status=%s", name, jobStatus)
 	}
-
+	log.Info("Start service finished")
 	return nil
 }
 
@@ -323,6 +323,6 @@ func restartService(name string) error {
 	if jobStatus != "done" {
 		return fmt.Errorf("failed to restart %s: job status=%s", name, jobStatus)
 	}
-
+	log.Info("Restart service finished")
 	return nil
 }
