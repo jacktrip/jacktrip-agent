@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+IMAGE_REGISTRY := us.gcr.io/jacktrip-app
+IMAGE_TAG_ENV_VAR = $(or ${IMAGE_TAG}, "develop")
+
 .PHONY: all agent fmt lint
 
 all: lint fmt agent-amd64 agent-arm
@@ -27,3 +30,23 @@ fmt:
 
 lint:
 	@golint ./...
+
+image:
+	@docker build -f Dockerfile -t ${IMAGE_REGISTRY}/agent:${IMAGE_TAG_ENV_VAR} .
+
+# You need to disable root user logic in cmd/main.go
+run_server:
+	@go run ./cmd -s
+
+ssh:
+	@sshpass -p jacktrip ssh pi@jacktrip.local
+
+update_device: agent-arm
+	@mv jacktrip-agent-arm jacktrip-agent
+	@echo 'built a jacktrip-agent binary'
+	@sshpass -p jacktrip ssh pi@jacktrip.local "sudo mount -o remount,rw / && sudo rm /usr/local/bin/jacktrip-agent" || true
+	@echo 'removed jacktrip-agent binary from the device'
+	@sshpass -p jacktrip scp jacktrip-agent pi@jacktrip.local:~
+	@echo 'copied local jacktrip-agent binary into the device'
+	@sshpass -p jacktrip ssh pi@jacktrip.local "sudo mount -o remount,rw / && sudo mv ~/jacktrip-agent /usr/local/bin/jacktrip-agent && sudo systemctl restart jacktrip-agent.service"
+	@echo 'restarted the service'

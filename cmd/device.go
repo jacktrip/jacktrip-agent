@@ -24,7 +24,6 @@ import (
 	"sync"
 	"time"
 
-	goping "github.com/go-ping/ping"
 	"github.com/gorilla/mux"
 
 	"github.com/jacktrip/jacktrip-agent/pkg/client"
@@ -56,6 +55,8 @@ const (
 var soundDeviceName = ""
 var soundDeviceType = ""
 var lastDeviceStatus = "starting"
+var newDeviceConfig client.AgentConfig
+var lastDeviceConfig client.AgentConfig
 
 // runOnDevice is used to run jacktrip-agent on a raspberry pi device
 func runOnDevice(apiOrigin string) {
@@ -109,57 +110,93 @@ func runOnDevice(apiOrigin string) {
 
 	// start ping server to send pings and update agent config
 	wg.Add(1)
-	go runDevicePinger(&wg, ping, apiOrigin)
+	go runDeviceConfigPinger(&wg, ping, apiOrigin)
 
 	// wait for everything to complete
 	wg.Wait()
 }
 
-// runDevicePinger sends pings to service and manages config updates
-func runDevicePinger(wg *sync.WaitGroup, ping client.AgentPing, apiOrigin string) {
+func timeIt(f func() interface{}) (time.Duration, interface{}) {
+	startAt := time.Now()
+	res := f()
+	endAt := time.Now()
+	return time.Duration(endAt.UnixNano() - startAt.UnixNano()), res
+}
+
+func getConfigHandler(ping client.AgentPing) {
+	for {
+		select {
+		case newConfig, ok := <- ConfigChannel:
+			if ok {
+				log.Info("Read a config from the channel")
+				newDeviceConfig = newConfig
+				log.Info(fmt.Sprintf("Da New Config from socket %#v\n", newDeviceConfig))
+				if newDeviceConfig != lastDeviceConfig {
+					// Check if the new config indicates a disconnect from an audio server. If yes, kill the existing socket as well. 
+					if newDeviceConfig.Enabled == false && newDeviceConfig.Host == "" {
+						CloseConnection()
+					}
+					handleDeviceUpdate(ping, newDeviceConfig)
+				}
+			} else {
+				log.Info("Channel is closed")
+			}
+		default:
+		}
+		getPingStats(&ping)
+		time.Sleep(1 * time.Millisecond)
+	}
+}
+
+// runDeviceConfigPinger sends pings to service and manages config updates
+func runDeviceConfigPinger(wg *sync.WaitGroup, ping client.AgentPing, apiOrigin string) {
 	defer wg.Done()
-
 	log.Info("Starting agent ping server")
+	getPingStats(&ping)
 
-	getPingStats(&ping, nil)
+	// Start a config handler to update incoming config changes
+	wg.Add(1)
+	go getConfigHandler(ping)
+	var err error
 
 	for {
-		config, err := sendPing(ping, apiOrigin)
-		if err != nil {
-			updateDeviceStatus(ping, "error")
-			panic(err)
-		}
-
-		// check if config has changed
-		if config != lastConfig {
-			log.Info("Config updated", "value", config)
-			handleDeviceUpdate(ping, config)
-		}
-
-		if config.Enabled && config.Host != "" {
-			// ping server instead of sleeping
-			pinger, err := goping.NewPinger(config.Host)
-			if err == nil {
-				log.V(2).Info("Pinging server", "host", config.Host)
-				pinger.Count = AgentPingInterval * 10
-				pinger.Interval = time.Millisecond * 100
-				pinger.Timeout = time.Second * AgentPingInterval
-				pinger.Run()
-				log.V(1).Info("Done pinging server", "host", config.Host, "stats", *pinger.Statistics())
-				getPingStats(&ping, pinger.Statistics())
-			} else {
-				log.Error(err, "Failed to create pinger")
-				// sleep in between pings
-				time.Sleep(time.Second * AgentPingInterval)
-				getPingStats(&ping, nil)
+		// If the device isn't connected to an audio server, there is no socket connection to the api server so use a regular ping endpoint.
+		if Connector.IsInitialized == false || newDeviceConfig.Enabled == false {
+			newDeviceConfig, err = sendPing(ping, apiOrigin)
+			log.Info(fmt.Sprintf("Getting a device conf from sendPing, %#v\n", newDeviceConfig))
+			if err != nil {
+				updateDeviceStatus(ping, "error")
+				panic(err)
 			}
-		} else {
-			// sleep in between pings
-			time.Sleep(time.Second * AgentPingInterval)
-			getPingStats(&ping, nil)
+
+			if newDeviceConfig != lastDeviceConfig {
+				handleDeviceUpdate(ping, newDeviceConfig)
+			}
+		}
+		
+		if newDeviceConfig.Enabled == true && newDeviceConfig.Host != "" {
+			// Establish a socket connection to the api server
+			log.Info("Config enabled")
+			_, err := InitWsConnection(apiOrigin, ping)
+			if err != nil {
+				updateDeviceStatus(ping, "error")
+			}
+			
+			go PingAudioServer(newDeviceConfig.Host, newDeviceConfig.Port)
+		}
+		
+		time.Sleep(AgentPingInterval)
+		getPingStats(&ping)
+		if newDeviceConfig.Enabled == true && newDeviceConfig.Host != "" {
+			err := SendDevicePing(ping, apiOrigin)
+			if err != nil {
+				log.Error(err, "Error sending a device ping stats")
+			}
 		}
 	}
 }
+
+
 
 // handleDeviceUpdate handles updates to device configuratiosn
 func handleDeviceUpdate(ping client.AgentPing, config client.AgentConfig) {
@@ -167,13 +204,13 @@ func handleDeviceUpdate(ping client.AgentPing, config client.AgentConfig) {
 	log.Info("Config updated", "value", config)
 
 	// update ALSA card settings
-	if config.ALSAConfig != lastConfig.ALSAConfig {
+	if config.ALSAConfig != lastDeviceConfig.ALSAConfig {
 		updateALSASettings(config)
 	}
 
 	// check if ALSA card settings was the only change
-	lastConfig.ALSAConfig = config.ALSAConfig
-	if config != lastConfig {
+	lastDeviceConfig.ALSAConfig = config.ALSAConfig
+	if config != lastDeviceConfig {
 		// more changes required -> reset everything
 
 		// update managed config files
@@ -183,7 +220,7 @@ func handleDeviceUpdate(ping client.AgentPing, config client.AgentConfig) {
 		restartAllServices(config, false)
 	}
 
-	lastConfig = config
+	lastDeviceConfig = config
 
 	// update device status in avahi service config, if necessary
 	if config.Enabled {
@@ -244,25 +281,15 @@ func getSoundDeviceType() string {
 }
 
 // getPingStats updates and AgentPing message with go-ping Pinger stats
-func getPingStats(ping *client.AgentPing, stats *goping.Statistics) {
+func getPingStats(ping *client.AgentPing) {
 	ping.StatsUpdatedAt = time.Now()
-
-	if stats == nil {
-		ping.PacketsRecv = 0
-		ping.PacketsSent = 0
-		ping.MinRtt = 0
-		ping.MaxRtt = 0
-		ping.AvgRtt = 0
-		ping.StdDevRtt = 0
-		return
-	}
-
-	ping.PacketsRecv = stats.PacketsRecv
-	ping.PacketsSent = stats.PacketsSent
-	ping.MinRtt = stats.MinRtt
-	ping.MaxRtt = stats.MaxRtt
-	ping.AvgRtt = stats.AvgRtt
-	ping.StdDevRtt = stats.StdDevRtt
+	ping.PacketsSent = PingRecorderLimit
+	ping.PacketsRecv = len(PingRecorder.RttEpochTimes)
+	ping.MinRtt = PingRecorder.Stats.MinRtt
+	ping.MaxRtt = PingRecorder.Stats.MaxRtt
+	ping.AvgRtt = PingRecorder.Stats.AvgRtt
+	ping.LatestRtt = PingRecorder.Stats.LatestRtt
+	ping.StdDevRtt = PingRecorder.Stats.StdDevRtt
 }
 
 // updateALSASettings is used to update the settings for an ALSA sound card

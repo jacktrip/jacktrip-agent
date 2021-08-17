@@ -16,7 +16,7 @@ package main
 
 import (
 	"flag"
-	"os"
+	// "os"
 )
 
 const (
@@ -31,14 +31,16 @@ const (
 func main() {
 
 	// require this be run as root
-	if os.Geteuid() != 0 {
-		log.Info("jacktrip-agent must be run as root")
-		os.Exit(1)
-	}
+	// if os.Geteuid() != 0 {
+	// 	log.Info("jacktrip-agent must be run as root")
+	// 	os.Exit(1)
+	// }
 
-	apiOrigin := flag.String("o", "https://app.jacktrip.org/api", "origin to use when constructing API endpoints")
+	apiOrigin := flag.String("o", "http://192.168.1.2:8000/api", "origin to use when constructing API endpoints")
 	serverMode := flag.Bool("s", false, "true if running on audio server; false if on device")
 	flag.Parse()
+	x := "https://test.jacktrip.org/api"
+	apiOrigin = &x
 
 	if *serverMode {
 		runOnServer(*apiOrigin)

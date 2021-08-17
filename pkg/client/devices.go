@@ -58,31 +58,6 @@ type ALSAConfig struct {
 	PlaybackVolume int `json:"playbackVolume" db:"playback_volume"`
 }
 
-// PingStats is used to represent ping statistics
-type PingStats struct {
-	// PacketsRecv is the number of packets received.
-	PacketsRecv int `json:"pkts_recv" db:"pkts_recv"`
-
-	// PacketsSent is the number of packets sent.
-	PacketsSent int `json:"pkts_sent" db:"pkts_sent"`
-
-	// MinRtt is the minimum round-trip time sent via this pinger.
-	MinRtt time.Duration `json:"min_rtt" db:"min_rtt"`
-
-	// MaxRtt is the maximum round-trip time sent via this pinger.
-	MaxRtt time.Duration `json:"max_rtt" db:"max_rtt"`
-
-	// AvgRtt is the average round-trip time sent via this pinger.
-	AvgRtt time.Duration `json:"avg_rtt" db:"avg_rtt"`
-
-	// StdDevRtt is the standard deviation of the round-trip times sent via
-	// this pinger.
-	StdDevRtt time.Duration `json:"stddev_rtt" db:"stddev_rtt"`
-
-	// timestamp when the device stats were last updated
-	StatsUpdatedAt time.Time `json:"stats_updated_at" db:"stats_updated_at"`
-}
-
 // AgentConfig defines active configuration for an agent
 type AgentConfig struct {
 	DeviceConfig
@@ -94,6 +69,32 @@ type AgentConfig struct {
 
 	// size of jitter queue buffer
 	QueueBuffer int `json:"queueBuffer" db:"queue_buffer"`
+}
+
+type PingStats struct {
+	// PacketsRecv is the number of packets received.
+	PacketsRecv int `json:"pkts_recv" db:"pkts_recv"`
+
+	// PacketsSent is the number of packets sent.
+	PacketsSent int `json:"pkts_sent" db:"pkts_sent"`
+
+	// MinRtt is the minimum round-trip time sent via tcping.
+	MinRtt time.Duration `json:"min_rtt" db:"min_rtt"`
+
+	// MaxRtt is the maximum round-trip time sent via tcping.
+	MaxRtt time.Duration `json:"max_rtt" db:"max_rtt"`
+
+	// AvgRtt is the average round-trip time sent via tcping.
+	AvgRtt time.Duration `json:"avg_rtt" db:"avg_rtt"`
+
+	// StdDevRtt is the standard deviation of the round-trip times sent via tcping.
+	StdDevRtt time.Duration `json:"stddev_rtt" db:"stddev_rtt"`
+
+	// LatestRtt is the latest rtt sent via tcping.
+	LatestRtt time.Duration `json:"latest_rtt db:"latest_rtt"`
+
+	// timestamp when the device stats were last updated
+	StatsUpdatedAt time.Time `json:"stats_updated_at" db:"stats_updated_at"`
 }
 
 // AgentCredentials defines authentication credentials for an agent
