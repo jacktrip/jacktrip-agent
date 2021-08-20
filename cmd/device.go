@@ -35,10 +35,10 @@ const (
 	PathToAvahiServiceFile = "/tmp/avahi/services/jacktrip-agent.service"
 
 	// JackDeviceConfigTemplate is the template used to generate /tmp/default/jack file on raspberry pi devices
-	JackDeviceConfigTemplate = "JACK_OPTS=-dalsa -dhw:%s --rate %d --period %d --udprt\n"
+	JackDeviceConfigTemplate = "JACK_OPTS=-dalsa -dhw:%s --rate %d --period %d\n"
 
 	// JackTripDeviceConfigTemplate is the template used to generate /tmp/default/jacktrip file  on raspberry pi devices
-	JackTripDeviceConfigTemplate = "JACKTRIP_OPTS=-t -z -n %d -C %s --peerport %d --bindport %d --clientname hubserver --remotename %s %s\n"
+	JackTripDeviceConfigTemplate = "JACKTRIP_OPTS=-t -z --udprt -n %d -C %s --peerport %d --bindport %d --clientname hubserver --remotename %s %s\n"
 
 	// JamulusDeviceConfigTemplate is the template used to generate /tmp/default/jamulus file on raspberry pi devices
 	JamulusDeviceConfigTemplate = "JAMULUS_OPTS=-n -i /tmp/jamulus.ini -c %s:%d\n"
@@ -121,8 +121,6 @@ func runDevicePinger(wg *sync.WaitGroup, ping client.AgentPing, apiOrigin string
 
 	log.Info("Starting agent ping server")
 
-	config := client.AgentConfig{}
-	lastConfig := config
 	getPingStats(&ping, nil)
 
 	for {

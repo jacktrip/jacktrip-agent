@@ -58,7 +58,7 @@ func TestPingStats(t *testing.T) {
 	var target PingStats
 
 	// Parse JSON into PingStats struct
-	raw = `{"pkts_recv": 832, "pkts_sent": 3, "min_rtt": 3, "max_rtt": -5, "avg_rtt": 301, "stddev_rtt": -10291, "stats_updated_at": "2021-08-11T10:28:32.487013776-07:00"}`
+	raw = `{"pkts_recv": 832, "pkts_sent": 3, "min_rtt": 3, "max_rtt": -5, "avg_rtt": 301, "stddev_rtt": -10291, "stats_updated_at": "2021-08-11T10:28:32.487013776Z"}`
 	target = PingStats{}
 	json.Unmarshal([]byte(raw), &target)
 	assert.Equal(832, target.PacketsRecv)
@@ -67,11 +67,38 @@ func TestPingStats(t *testing.T) {
 	assert.Equal(-1*time.Duration(5), target.MaxRtt)
 	assert.Equal(time.Duration(301), target.AvgRtt)
 	assert.Equal(-1*time.Duration(10291), target.StdDevRtt)
-	assert.Equal("2021-08-11 10:28:32.487013776 -0700 PDT", target.StatsUpdatedAt.String())
+	assert.Equal("2021-08-11 10:28:32.487013776 +0000 UTC", target.StatsUpdatedAt.String())
 }
 
 func TestAgentConfig(t *testing.T) {
-	t.Skip("TODO")
+	assert := assert.New(t)
+	var raw string
+	var target AgentConfig
+
+	// Parse JSON into AgentConfig struct
+	raw = `{"period": 3, "queueBuffer": 128, "devicePort": 8000, "reverb": 42, "limiter": true, "compressor": 0, "quality": 2, "captureBoost": true, "playbackBoost": 0, "captureVolume": 100, "playbackVolume": 0, "type": "JackTrip+Jamulus", "mixBranch": "main", "mixCode": "echo hi", "serverHost": "a.b.com", "serverPort": 8000, "sampleRate": 96000, "stereo": true, "loopback": false, "enabled": true}`
+	target = AgentConfig{}
+	json.Unmarshal([]byte(raw), &target)
+	assert.Equal(3, target.Period)
+	assert.Equal(128, target.QueueBuffer)
+	assert.Equal(8000, target.DevicePort)
+	assert.Equal(42, target.Reverb)
+	assert.Equal(true, bool(target.Limiter))
+	assert.Equal(false, bool(target.Compressor))
+	assert.Equal(2, target.Quality)
+	assert.Equal(true, bool(target.CaptureBoost))
+	assert.Equal(false, bool(target.PlaybackBoost))
+	assert.Equal(100, target.CaptureVolume)
+	assert.Equal(0, target.PlaybackVolume)
+	assert.Equal(JackTripJamulus, target.Type)
+	assert.Equal("main", target.MixBranch)
+	assert.Equal("echo hi", target.MixCode)
+	assert.Equal("a.b.com", target.Host)
+	assert.Equal(8000, target.Port)
+	assert.Equal(96000, target.SampleRate)
+	assert.Equal(true, bool(target.Stereo))
+	assert.Equal(false, bool(target.LoopBack))
+	assert.Equal(true, bool(target.Enabled))
 }
 
 func TestAgentCredentials(t *testing.T) {
@@ -94,5 +121,25 @@ func TestGetAPIHash(t *testing.T) {
 }
 
 func TestAgentPing(t *testing.T) {
-	t.Skip("TODO")
+	assert := assert.New(t)
+	var raw string
+	var target AgentPing
+
+	// Parse JSON into AgentPing struct
+	raw = `{"apiPrefix": "black", "apiSecret": "pink", "cloudId": "aws", "mac": "00:1B:44:11:3A:B7", "version": "1.0.0", "type": "snd_rpi_hifiberry_dacplusadcpro", "pkts_recv": 832, "pkts_sent": 3, "min_rtt": 3, "max_rtt": -5, "avg_rtt": 301, "stddev_rtt": -10291, "stats_updated_at": "2021-08-11T10:28:32.487013776Z"}`
+	target = AgentPing{}
+	json.Unmarshal([]byte(raw), &target)
+	assert.Equal("black", target.APIPrefix)
+	assert.Equal("pink", target.APISecret)
+	assert.Equal("aws", target.CloudID)
+	assert.Equal("00:1B:44:11:3A:B7", target.MAC)
+	assert.Equal("1.0.0", target.Version)
+	assert.Equal("snd_rpi_hifiberry_dacplusadcpro", target.Type)
+	assert.Equal(832, target.PacketsRecv)
+	assert.Equal(3, target.PacketsSent)
+	assert.Equal(time.Duration(3), target.MinRtt)
+	assert.Equal(-1*time.Duration(5), target.MaxRtt)
+	assert.Equal(time.Duration(301), target.AvgRtt)
+	assert.Equal(-1*time.Duration(10291), target.StdDevRtt)
+	assert.Equal("2021-08-11 10:28:32.487013776 +0000 UTC", target.StatsUpdatedAt.String())
 }
