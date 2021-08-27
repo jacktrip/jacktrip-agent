@@ -25,6 +25,9 @@ const (
 
 	// AgentLibDir is the directory containing additional files used by the agent
 	AgentLibDir = "/var/lib/jacktrip"
+
+	// HTTPServerPort opens a router at the port
+	HTTPServerPort = "1019"
 )
 
 // main wires everything together and starts up the Agent server

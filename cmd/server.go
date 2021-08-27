@@ -33,23 +33,17 @@ const (
 	// MaxClientsPerProcessor is the number of JackTrip clients to support per logical processor
 	MaxClientsPerProcessor = 6 // add 1 (20%) for Jamulus bridge, etc
 
-	// SuperColliderServiceName is the name of the systemd service for the SuperCollider server
-	SuperColliderServiceName = "supernova.service"
+	// SCSynthServiceName is the name of the systemd service for the SuperCollider scsynth server
+	SCSynthServiceName = "scsynth.service"
+
+	// SupernovaServiceName is the name of the systemd service for the SuperCollider supernova server
+	SupernovaServiceName = "supernova.service"
 
 	// SCLangServiceName is the name of the systemd service for the SuperCollider language runtime
 	SCLangServiceName = "sclang.service"
 
 	// JackAutoconnectServiceName is the name of the systemd service for connecting jack clients
 	JackAutoconnectServiceName = "jack-autoconnect.service"
-
-	// JackPlumbingServiceName is the name of the systemd service for connecting jack clients
-	JackPlumbingServiceName = "jack-plumbing.service"
-
-	// JackTripReceiveServiceName is the name of the systemd service for connecting jack client inputs
-	JackTripReceiveServiceName = "jacktrip-receive.service"
-
-	// JackTripSendServiceName is the name of the systemd service for connecting jack client outputs
-	JackTripSendServiceName = "jacktrip-send.service"
 
 	// JamulusServerServiceName is the name of the systemd service for the Jamulus server
 	JamulusServerServiceName = "jamulus-server.service"
@@ -76,7 +70,7 @@ const (
 	SCLangConfigTemplate = "SCLANG_OPTS=%s %s\n"
 
 	// SuperColliderConfigTemplate is the template used to generate /tmp/default/supercollider file on audio servers
-	SuperColliderConfigTemplate = "SC_OPTS=-i %d -o %d -m %d -z %d -a 2570\n"
+	SuperColliderConfigTemplate = "SC_OPTS=-i %d -o %d -a %d -m %d -z %d -n 4096 -d 2048 %s\n"
 
 	// EC2InstanceIDURL is url using EC2 metadata service that returns the instance-id
 	// See https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-metadata.html
@@ -107,7 +101,7 @@ func runOnServer(apiOrigin string) {
 		OptionsGetOnly(w, r)
 	})).Methods("OPTIONS")
 	wg.Add(1)
-	go runHTTPServer(&wg, router)
+	go runHTTPServer(&wg, router, HTTPServerPort)
 
 	// get cloud id
 	cloudID := getCloudID()
@@ -223,21 +217,47 @@ func updateSuperColliderConfigs(config client.AgentConfig) {
 	maxClients := runtime.NumCPU() * MaxClientsPerProcessor
 	numInputChannels := maxClients * 2
 	numOutputChannels := maxClients * 2
-	scMemorySize := 8192
+	audioBusses := (numInputChannels + numOutputChannels) * 2
+
+	// bump memory for larger systems
+	scMemorySize := 65536
 	if maxClients > 50 {
-		scMemorySize = 16384
+		scMemorySize = 262144
 	}
+
+	// lower bufsize if jack is lower
 	scBufSize := 64
 	if config.Period < 64 {
 		scBufSize = config.Period
 	}
-	scConfig := fmt.Sprintf(SuperColliderConfigTemplate, numInputChannels, numOutputChannels, scMemorySize, scBufSize)
+
+	// append threads when using supernova because the default is way too high/inefficient
+	extraOpts := ""
+	if runtime.NumCPU() <= 50 {
+
+		// use number of physical cores for dsp threads
+		scThreads := runtime.NumCPU() / 2
+		if scThreads > 4 {
+			// there seems to be no advantage of ever using > 4 threads
+			// in fact, it consistently degrades performance
+			scThreads = 4
+		}
+
+		extraOpts = fmt.Sprintf("-T %d", scThreads)
+	}
+
+	// create service config using template
+	scConfig := fmt.Sprintf(SuperColliderConfigTemplate,
+		numInputChannels, numOutputChannels, audioBusses,
+		scMemorySize, scBufSize, extraOpts)
+
+	// write SuperCollider (supercollider) service config file
 	err := ioutil.WriteFile(PathToSuperColliderConfig, []byte(scConfig), 0644)
 	if err != nil {
 		log.Error(err, "Failed to save SuperCollider config", "path", PathToSuperColliderConfig)
 	}
 
-	// write SuperCollider (sclang) config file
+	// write SuperCollider (sclang) service config file
 	sclangConfig := fmt.Sprintf(SCLangConfigTemplate, config.MixBranch, PathToSuperColliderStartupFile)
 	err = ioutil.WriteFile(PathToSCLangConfig, []byte(sclangConfig), 0644)
 	if err != nil {

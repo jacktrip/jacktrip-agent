@@ -97,7 +97,7 @@ func runOnDevice(apiOrigin string) {
 		OptionsGetOnly(w, r)
 	})).Methods("OPTIONS")
 	wg.Add(1)
-	go runHTTPServer(&wg, router)
+	go runHTTPServer(&wg, router, ":80")
 
 	// update avahi service config and restart daemon
 	ping := client.AgentPing{
@@ -172,7 +172,7 @@ func runDeviceConfigPinger(wg *sync.WaitGroup, ping client.AgentPing, apiOrigin 
 				updateDeviceStatus(ping, "error")
 			}
 
-			go PingAudioServer(apiOrigin, newDeviceConfig.Host, 80)
+			go PingAudioServer(apiOrigin, newDeviceConfig.Host, HTTPServerPort)
 		}
 
 		time.Sleep(AgentPingInterval)

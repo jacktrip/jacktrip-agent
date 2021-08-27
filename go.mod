@@ -1,6 +1,6 @@
 module github.com/jacktrip/jacktrip-agent
 
-go 1.13
+go 1.16
 
 require (
 	github.com/coreos/go-systemd/v22 v22.1.0

@@ -1,0 +1,32 @@
+name: Agent CI
+
+on:
+  push:
+  pull_request:
+    branches:
+    - develop
+    - main
+
+jobs:
+  build:
+    name: Verify code
+    runs-on: ubuntu-20.04
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+    - name: Setup golang
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.16.x
+    - name: Scan hardcoded secrets
+      uses: max/secret-scan@master
+      with:
+        exclude_path: '.github/workflows/secret-scan-denylist.txt'
+    - name: Format and lint
+      run: |
+        go env -w GOFLAGS=-mod=mod
+        go get -u golang.org/x/lint/golint
+        make fmt
+        make lint
+    - name: Build
+      run: make agent-amd64

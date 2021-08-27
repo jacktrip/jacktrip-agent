@@ -36,8 +36,8 @@ var PingRecorderLimit = 5
 var PingRecorder = Recorder{}
 
 // PingAudioServer uses a socket connection to measure a RTT to an audio server
-func PingAudioServer(apiOrigin string, host string, port int) {
-	u := url.URL{Scheme: "ws", Host: fmt.Sprintf("%s:%d", host, port), Path: "/ping"}
+func PingAudioServer(apiOrigin string, host string, port string) {
+	u := url.URL{Scheme: "ws", Host: fmt.Sprintf("%s:%s", host, port), Path: "/ping"}
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
 		log.Error(err, fmt.Sprintf("Could not reach the audio server at %s", u.String()))
