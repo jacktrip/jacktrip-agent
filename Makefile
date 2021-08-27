@@ -44,3 +44,8 @@ update_device: agent-arm
 	@echo 'copied local jacktrip-agent binary into the device'
 	@sshpass -p jacktrip ssh pi@jacktrip.local "sudo mount -o remount,rw / && sudo mv ~/jacktrip-agent /usr/local/bin/jacktrip-agent && sudo systemctl restart jacktrip-agent.service"
 	@echo 'restarted the service'
+	
+small-tests:
+	@go clean -testcache
+	@mkdir -p artifacts
+	@gotestsum -f standard-verbose --junitfile artifacts/results-small.xml -- -coverprofile=artifacts/coverage.out -tags=unit ./...

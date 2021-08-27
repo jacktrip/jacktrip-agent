@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 	"time"
 
@@ -32,13 +31,14 @@ type webSocketConnector struct {
 	Mu            sync.Mutex
 	APIOrigin     string
 	IsInitialized bool
-	DeviceID      string
 }
 
 // Connector is used as a singleton object of webSocketConnector
 var Connector webSocketConnector
+
 // ConfigChannel holds config objects that came through a websocket connection and is consumed by a handler in device.go
 var ConfigChannel = make(chan client.AgentConfig, 100)
+
 // ReceivePingChannel is used to control ReceivePingHandler Goroutine
 var ReceivePingChannel chan bool
 
@@ -126,6 +126,7 @@ func SendDevicePing(pingStats client.PingStats) {
 }
 
 func receivePingHandler() {
+	defer close(ReceivePingChannel)
 	for {
 		select {
 		case <-ReceivePingChannel:
@@ -140,12 +141,6 @@ func receivePingHandler() {
 				log.Error(err, "[WS] Error reading message. Closing the connection")
 				CloseWSConnection()
 				return
-			}
-
-			// device id message comes in a form of "ID:{deviceId}"
-			if strings.Contains(string(message), "ID:") {
-				Connector.DeviceID = string(message)[4:]
-				continue
 			}
 
 			if err := json.Unmarshal(message, &config); err != nil {

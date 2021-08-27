@@ -26,11 +26,12 @@ import (
 // runHTTPServer runs the agent's HTTP server
 func runHTTPServer(wg *sync.WaitGroup, router *mux.Router, address string) error {
 	defer wg.Done()
-	log.Info("Starting agent HTTP server")
+	log.Info("Starting an agent HTTP server")
 	err := http.ListenAndServe(address, router)
 	if err != nil {
 		log.Error(err, "HTTP server error")
 	}
+	
 	return err
 }
 

@@ -27,12 +27,11 @@ const (
 	AgentLibDir = "/var/lib/jacktrip"
 
 	// HTTPServerPort opens a router at the port
-	HTTPServerPort = "1019"
+	HTTPServerPort = "1029"
 )
 
 // main wires everything together and starts up the Agent server
 func main() {
-
 	// require this be run as root
 	if os.Geteuid() != 0 {
 		log.Info("jacktrip-agent must be run as root")

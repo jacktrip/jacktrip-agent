@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/gorilla/websocket"
 
 	"github.com/jacktrip/jacktrip-agent/pkg/client"
 )
@@ -85,8 +84,6 @@ const (
 	AzureInstanceIDURL = "http://169.254.169.254/metadata/instance/compute/name?api-version=2017-08-01&format=text"
 )
 
-var wsClients = make(map[*websocket.Conn]bool)
-
 // runOnServer is used to run jacktrip-agent on an audio cloud server
 func runOnServer(apiOrigin string) {
 	// setup wait group for multiple routines
@@ -101,7 +98,7 @@ func runOnServer(apiOrigin string) {
 		OptionsGetOnly(w, r)
 	})).Methods("OPTIONS")
 	wg.Add(1)
-	go runHTTPServer(&wg, router, HTTPServerPort)
+	go runHTTPServer(&wg, router, fmt.Sprintf("0.0.0.0:%s", HTTPServerPort))
 
 	// get cloud id
 	cloudID := getCloudID()

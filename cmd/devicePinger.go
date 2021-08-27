@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"time"
 
+	goping "github.com/go-ping/ping"
 	"github.com/gorilla/websocket"
 	"github.com/jacktrip/jacktrip-agent/pkg/client"
 )
@@ -32,6 +33,7 @@ type Recorder struct {
 
 // PingRecorderLimit sets the capacity of the RTT array in PingRecorder
 var PingRecorderLimit = 5
+
 // PingRecorder is a singleton instance of Recorder used globally
 var PingRecorder = Recorder{}
 
@@ -41,6 +43,21 @@ func PingAudioServer(apiOrigin string, host string, port string) {
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
 		log.Error(err, fmt.Sprintf("Could not reach the audio server at %s", u.String()))
+		// TODO: see if we need to add ICMP ping
+		pinger, err := goping.NewPinger(host)
+		if err != nil {
+			log.Error(err, "Failed to create pinger")
+			return
+		}
+
+		log.Info(fmt.Sprintf("Pinging an audio server at %s", host))
+		pinger.Count = int(AgentPingInterval)/1000000000 * 10 // Normalize time into a count
+		pinger.Interval = time.Millisecond * 100
+		pinger.Timeout = AgentPingInterval
+		pinger.Run()
+		
+		PingRecorder.updateStatsWithICMPPing(pinger.Statistics())
+		log.Info(fmt.Sprintf("Finished icmp ping to an %s with stats %+v", host, PingRecorder.Stats))
 		return
 	}
 	defer c.Close()
@@ -67,6 +84,17 @@ func PingAudioServer(apiOrigin string, host string, port string) {
 
 		time.Sleep(1 * time.Second)
 	}
+}
+
+func (*Recorder) updateStatsWithICMPPing(icmpStats *goping.Statistics) {
+	PingRecorder.Stats = client.PingStats{}
+	PingRecorder.Stats.MinRtt = icmpStats.MinRtt
+	PingRecorder.Stats.MaxRtt = icmpStats.MaxRtt
+	PingRecorder.Stats.AvgRtt = icmpStats.AvgRtt
+	PingRecorder.Stats.StdDevRtt = icmpStats.StdDevRtt
+	PingRecorder.Stats.LatestRtt = icmpStats.Rtts[len(icmpStats.Rtts) - 1]
+	PingRecorder.Stats.PacketsSent = icmpStats.PacketsSent
+	PingRecorder.Stats.PacketsRecv = icmpStats.PacketsRecv
 }
 
 func (*Recorder) addPingRecord(pingRecord time.Duration) {
@@ -100,6 +128,8 @@ func (*Recorder) calculateStats() {
 	PingRecorder.Stats.AvgRtt = avgRtt
 	PingRecorder.Stats.StdDevRtt = time.Duration(math.Sqrt(float64(sd.Nanoseconds() / int64(len(PingRecorder.RttEpochTimes)))))
 	PingRecorder.Stats.LatestRtt = PingRecorder.RttEpochTimes[len(PingRecorder.RttEpochTimes)-1]
+	PingRecorder.Stats.PacketsSent = PingRecorderLimit
+	PingRecorder.Stats.PacketsRecv = len(PingRecorder.RttEpochTimes)
 }
 
 // Reset clears the attributes of PingRecorder

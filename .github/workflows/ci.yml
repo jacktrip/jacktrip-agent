@@ -1,7 +1,6 @@
 name: Agent CI
 
 on:
-  push:
   pull_request:
     branches:
     - develop
@@ -28,5 +27,15 @@ jobs:
         go get -u golang.org/x/lint/golint
         make fmt
         make lint
+    - name: Small tests
+      run: |
+        go env -w GOFLAGS=-mod=mod
+        go get gotest.tools/gotestsum
+        make small-tests
+    - name: Report
+      uses: mikepenz/action-junit-report@v2
+      with:
+        check_name: Small tests
+        report_paths: 'artifacts/results-small.xml'
     - name: Build
       run: make agent-amd64

@@ -124,7 +124,7 @@ func getConfigHandler(ping client.AgentPing) {
 				newDeviceConfig = newConfig
 				if newDeviceConfig != lastDeviceConfig {
 					// Check if the new config indicates a disconnect from an audio server. If yes, kill the existing socket as well.
-					if newDeviceConfig.Enabled == false && newDeviceConfig.Host == "" {
+					if newDeviceConfig.Enabled == false || newDeviceConfig.Host == "" {
 						CloseWSConnection()
 						PingRecorder.Reset()
 					}
@@ -135,7 +135,6 @@ func getConfigHandler(ping client.AgentPing) {
 			}
 		default:
 		}
-		getPingStats(&ping)
 		time.Sleep(1 * time.Millisecond)
 	}
 }
@@ -262,11 +261,11 @@ func getSoundDeviceType() string {
 	return strings.TrimSpace(string(rawBytes))
 }
 
-// getPingStats updates and AgentPing message with go-ping Pinger stats
+// getPingStats updates and AgentPing with socket ping stats or icmp ping stats
 func getPingStats(ping *client.AgentPing) {
 	ping.StatsUpdatedAt = time.Now()
-	ping.PacketsSent = PingRecorderLimit
-	ping.PacketsRecv = len(PingRecorder.RttEpochTimes)
+	ping.PacketsSent = PingRecorder.Stats.PacketsSent
+	ping.PacketsRecv = PingRecorder.Stats.PacketsRecv
 	ping.MinRtt = PingRecorder.Stats.MinRtt
 	ping.MaxRtt = PingRecorder.Stats.MaxRtt
 	ping.AvgRtt = PingRecorder.Stats.AvgRtt
