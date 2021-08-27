@@ -98,7 +98,7 @@ func runOnServer(apiOrigin string) {
 		OptionsGetOnly(w, r)
 	})).Methods("OPTIONS")
 	wg.Add(1)
-	go runHTTPServer(&wg, router)
+	go runHTTPServer(&wg, router, ":4400")
 
 	// get cloud id
 	cloudID := getCloudID()

@@ -96,7 +96,7 @@ func runOnDevice(apiOrigin string) {
 		OptionsGetOnly(w, r)
 	})).Methods("OPTIONS")
 	wg.Add(1)
-	go runHTTPServer(&wg, router)
+	go runHTTPServer(&wg, router, ":80")
 
 	// update avahi service config and restart daemon
 	ping := client.AgentPing{

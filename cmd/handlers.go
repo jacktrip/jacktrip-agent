@@ -23,16 +23,11 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const (
-	// LocalHTTPServer is the <server>:port the HTTP server listens on
-	LocalHTTPServer = ":80"
-)
-
 // runHTTPServer runs the agent's HTTP server
-func runHTTPServer(wg *sync.WaitGroup, router *mux.Router) error {
+func runHTTPServer(wg *sync.WaitGroup, router *mux.Router, address string) error {
 	defer wg.Done()
 	log.Info("Starting agent HTTP server")
-	err := http.ListenAndServe(LocalHTTPServer, router)
+	err := http.ListenAndServe(address, router)
 	if err != nil {
 		log.Error(err, "HTTP server error")
 	}
