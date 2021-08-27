@@ -27,3 +27,8 @@ fmt:
 
 lint:
 	@golint ./...
+
+small-tests:
+	@go clean -testcache
+	@mkdir -p artifacts
+	@gotestsum -f standard-verbose --junitfile artifacts/results-small.xml -- -coverprofile=artifacts/coverage.out -tags=unit ./...
