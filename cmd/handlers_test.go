@@ -30,11 +30,6 @@ type TestResponseHeaders struct {
 	result string
 }
 
-func TestConstants(t *testing.T) {
-	assert := assert.New(t)
-	assert.Equal(":80", LocalHTTPServer)
-}
-
 func TestRunHTTPServer(t *testing.T) {
 	t.Skip("TODO")
 }
