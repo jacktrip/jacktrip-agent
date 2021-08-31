@@ -42,7 +42,7 @@ type WebSocketManager struct {
 }
 
 // InitConnection initializes a new connection if there is no connection or returns an existing connection
-func (wsm *WebSocketManager) InitConnection(wg *sync.WaitGroup, apiOrigin string, macAddr string) error {
+func (wsm *WebSocketManager) InitConnection(wg *sync.WaitGroup, ping *client.AgentPing, apiOrigin string) error {
 	if wsm.IsInitialized == true {
 		return nil
 	}
@@ -53,13 +53,15 @@ func (wsm *WebSocketManager) InitConnection(wg *sync.WaitGroup, apiOrigin string
 	if u.Scheme == "https" {
 		scheme = "wss"
 	}
-	path := fmt.Sprintf("%s%s", u.Path, fmt.Sprintf(statusPath, macAddr))
+	path := fmt.Sprintf("%s%s", u.Path, fmt.Sprintf(statusPath, ping.MAC))
 	wsURL := url.URL{Scheme: scheme, Host: u.Host, Path: path}
 	log.Info("Websocket connecting", "target", wsURL.String())
 
 	// Initialize a websocket to the control plane
 	wsm.Mu.Lock()
 	h := http.Header{"Origin": []string{"http://jacktrip.local"}}
+	h.Set("APISecret", ping.APISecret)
+	h.Set("APIPrefix", ping.APIPrefix)
 	c, _, err := websocket.DefaultDialer.Dial(wsURL.String(), h)
 	wsm.Conn = c
 	wsm.Mu.Unlock()
@@ -97,7 +99,7 @@ func (wsm *WebSocketManager) runRecvConfigHandler(wg *sync.WaitGroup) {
 		wsm.ReadMu.Lock()
 		_, message, err := wsm.Conn.ReadMessage()
 		wsm.ReadMu.Unlock()
-		
+
 		var config client.AgentConfig
 		if err != nil {
 			log.Error(err, "[Websocket] Error reading message. Closing the connection.")

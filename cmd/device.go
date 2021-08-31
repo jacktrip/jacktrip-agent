@@ -164,7 +164,7 @@ func runDeviceConfigPinger(wg *sync.WaitGroup, ping *client.AgentPing, wsm *WebS
 
 		if currentDeviceConfig.Enabled == true && currentDeviceConfig.Host != "" {
 			// Initialize a socket connection
-			err := wsm.InitConnection(wg, apiOrigin, ping.MAC)
+			err := wsm.InitConnection(wg, ping, apiOrigin)
 			if err != nil {
 				updateDeviceStatus(ping, "error")
 			}
