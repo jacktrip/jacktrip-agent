@@ -164,10 +164,7 @@ func runDeviceConfigPinger(wg *sync.WaitGroup, ping *client.AgentPing, wsm *WebS
 
 		if currentDeviceConfig.Enabled == true && currentDeviceConfig.Host != "" {
 			// Initialize a socket connection
-			err := wsm.InitConnection(wg, apiOrigin, ping.MAC)
-			if err != nil {
-				updateDeviceStatus(ping, "error")
-			}
+			wsm.InitConnection(wg, ping, apiOrigin) // no need for error check since failure defaults to http ping/config exhcange
 
 			// Measure connection latency to the audio server
 			MeasurePingStats(ping, apiOrigin, currentDeviceConfig.Host, HTTPServerPort) // blocks for 5 seconds instead of time sleep

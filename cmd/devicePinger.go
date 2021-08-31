@@ -46,8 +46,8 @@ func MeasurePingStats(ping *client.AgentPing, apiOrigin string, host string, por
 		pinger.Interval = time.Second
 		pinger.Timeout = AgentPingInterval * time.Second
 		pinger.Run() // blocking until done
-
 		updateICMPPing(ping, pinger.Statistics())
+		log.Info("Updated ping stats with ICMP ping result")
 		return
 	}
 
@@ -78,6 +78,7 @@ func MeasurePingStats(ping *client.AgentPing, apiOrigin string, host string, por
 		time.Sleep(time.Second)
 	}
 	updateWSPing(ping, socketRtts)
+	log.Info("Updated ping stats with websocket ping result")
 	return
 }
 
