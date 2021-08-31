@@ -55,8 +55,7 @@ const (
 var soundDeviceName = ""
 var soundDeviceType = ""
 var lastDeviceStatus = "starting"
-var newDeviceConfig client.AgentConfig
-var lastDeviceConfig client.AgentConfig
+var currentDeviceConfig client.AgentConfig
 
 // runOnDevice is used to run jacktrip-agent on a raspberry pi device
 func runOnDevice(apiOrigin string) {
@@ -106,92 +105,92 @@ func runOnDevice(apiOrigin string) {
 		Version:          getPatchVersion(),
 		Type:             soundDeviceType,
 	}
-	updateAvahiServiceConfig(ping, lastDeviceStatus)
+	updateAvahiServiceConfig(&ping, lastDeviceStatus)
 
 	// start ping server to send pings and update agent config
 	wg.Add(1)
-	go runDeviceConfigPinger(&wg, ping, apiOrigin)
+	wsm := WebSocketManager{ConfigChannel: make(chan client.AgentConfig, 100), PingStatsChannel: make(chan client.PingStats, 100)}
+	go runDeviceConfigPinger(&wg, &ping, &wsm, apiOrigin)
+
+	// Start a config handler to update config changes
+	wg.Add(1)
+	go runConfigUpdateHandler(&wg, &ping, &wsm)
 
 	// wait for everything to complete
 	wg.Wait()
 }
 
-func getConfigHandler(ping client.AgentPing) {
+func runConfigUpdateHandler(wg *sync.WaitGroup, ping *client.AgentPing, wsm *WebSocketManager) {
+	defer wg.Done()
+	log.Info("Starting getDeviceConfigHandler")
 	for {
 		select {
-		case newConfig, ok := <-ConfigChannel:
-			if ok {
-				newDeviceConfig = newConfig
-				if newDeviceConfig != lastDeviceConfig {
-					// Check if the new config indicates a disconnect from an audio server. If yes, kill the existing socket as well.
-					if newDeviceConfig.Enabled == false || newDeviceConfig.Host == "" {
-						CloseWSConnection()
-						PingRecorder.Reset()
-					}
-					handleDeviceUpdate(ping, newDeviceConfig)
-				}
-			} else {
+		case newDeviceConfig, ok := <-wsm.ConfigChannel:
+			if !ok {
 				log.Info("Config channel is closed")
+				return
+			}
+			if newDeviceConfig != currentDeviceConfig {
+				// Check if the new config indicates a disconnect from an audio server. If yes, kill the existing socket as well.
+				if wsm.IsInitialized == true && (newDeviceConfig.Enabled == false || newDeviceConfig.Host == "") {
+					wsm.CloseConnection()
+				}
+				handleDeviceUpdate(ping, newDeviceConfig)
 			}
 		default:
 		}
-		time.Sleep(1 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
 // runDeviceConfigPinger sends pings to service and manages config updates
-func runDeviceConfigPinger(wg *sync.WaitGroup, ping client.AgentPing, apiOrigin string) {
+func runDeviceConfigPinger(wg *sync.WaitGroup, ping *client.AgentPing, wsm *WebSocketManager, apiOrigin string) {
 	defer wg.Done()
 	log.Info("Starting agent ping server")
-	getPingStats(&ping)
-
-	// Start a config handler to update incoming config changes
-	wg.Add(1)
-	go getConfigHandler(ping)
-	var err error
 
 	for {
 		// If the device isn't connected to an audio server, there is no socket connection to the api server so use a regular ping endpoint.
-		if Connector.IsInitialized == false || newDeviceConfig.Enabled == false {
-			newDeviceConfig, err = sendPing(ping, apiOrigin)
+		if wsm.IsInitialized == false || currentDeviceConfig.Host == "" {
+			newDeviceConfig, err := sendPing(*ping, apiOrigin)
 			if err != nil {
 				updateDeviceStatus(ping, "error")
 				panic(err)
 			}
 
-			if newDeviceConfig != lastDeviceConfig {
-				handleDeviceUpdate(ping, newDeviceConfig)
+			if newDeviceConfig != currentDeviceConfig {
+				wsm.ConfigChannel <- newDeviceConfig
 			}
 		}
 
-		if newDeviceConfig.Enabled == true && newDeviceConfig.Host != "" {
-			// Establish a socket connection to the api server
-			err = InitWSConnection(apiOrigin, ping)
+		if currentDeviceConfig.Enabled == true && currentDeviceConfig.Host != "" {
+			// Initialize a socket connection
+			err := wsm.InitConnection(wg, apiOrigin, ping.MAC)
 			if err != nil {
 				updateDeviceStatus(ping, "error")
 			}
 
-			go PingAudioServer(apiOrigin, newDeviceConfig.Host, HTTPServerPort)
+			// Measure connection latency to the audio server
+			MeasurePingStats(ping, apiOrigin, currentDeviceConfig.Host, HTTPServerPort) // blocks for 5 seconds instead of time sleep
+		} else {
+			time.Sleep(AgentPingInterval * time.Second)
 		}
 
-		time.Sleep(AgentPingInterval)
-		getPingStats(&ping)
-		if newDeviceConfig.Enabled == true && newDeviceConfig.Host != "" {
-			go SendDevicePing(ping.PingStats)
+		if currentDeviceConfig.Enabled == true && currentDeviceConfig.Host != "" {
+			wsm.PingStatsChannel <- ping.PingStats
 		}
 	}
 }
 
 // handleDeviceUpdate handles updates to device configuratiosn
-func handleDeviceUpdate(ping client.AgentPing, config client.AgentConfig) {
+func handleDeviceUpdate(ping *client.AgentPing, config client.AgentConfig) {
 	// update ALSA card settings
-	if config.ALSAConfig != lastDeviceConfig.ALSAConfig {
+	if config.ALSAConfig != currentDeviceConfig.ALSAConfig {
 		updateALSASettings(config)
 	}
 
 	// check if ALSA card settings was the only change
-	lastDeviceConfig.ALSAConfig = config.ALSAConfig
-	if config != lastDeviceConfig {
+	currentDeviceConfig.ALSAConfig = config.ALSAConfig
+	if config != currentDeviceConfig {
 		// more changes required -> reset everything
 
 		// update managed config files
@@ -201,7 +200,7 @@ func handleDeviceUpdate(ping client.AgentPing, config client.AgentConfig) {
 		restartAllServices(config, false)
 	}
 
-	lastDeviceConfig = config
+	currentDeviceConfig = config
 
 	// update device status in avahi service config, if necessary
 	if config.Enabled {
@@ -259,18 +258,6 @@ func getSoundDeviceType() string {
 		panic(err)
 	}
 	return strings.TrimSpace(string(rawBytes))
-}
-
-// getPingStats updates and AgentPing with socket ping stats or icmp ping stats
-func getPingStats(ping *client.AgentPing) {
-	ping.StatsUpdatedAt = time.Now()
-	ping.PacketsSent = PingRecorder.Stats.PacketsSent
-	ping.PacketsRecv = PingRecorder.Stats.PacketsRecv
-	ping.MinRtt = PingRecorder.Stats.MinRtt
-	ping.MaxRtt = PingRecorder.Stats.MaxRtt
-	ping.AvgRtt = PingRecorder.Stats.AvgRtt
-	ping.LatestRtt = PingRecorder.Stats.LatestRtt
-	ping.StdDevRtt = PingRecorder.Stats.StdDevRtt
 }
 
 // updateALSASettings is used to update the settings for an ALSA sound card
@@ -442,7 +429,7 @@ func updateALSASettingsUSBPnPSoundDevice(config client.AgentConfig) {
 }
 
 // updateAvahiServiceConfig generates a new /etc/avahi/services/jacktrip-agent.service file
-func updateAvahiServiceConfig(ping client.AgentPing, status string) {
+func updateAvahiServiceConfig(ping *client.AgentPing, status string) {
 	// ensure config directory exists
 	err := os.MkdirAll("/tmp/avahi/services", 0755)
 	if err != nil {
@@ -475,7 +462,7 @@ func updateAvahiServiceConfig(ping client.AgentPing, status string) {
 }
 
 // updateDeviceStatus updates the device status, including avahi config, if it has changed
-func updateDeviceStatus(ping client.AgentPing, status string) {
+func updateDeviceStatus(ping *client.AgentPing, status string) {
 	log.Info(fmt.Sprintf("Updated device status to %s", status))
 	if lastDeviceStatus != status {
 		updateAvahiServiceConfig(ping, status)

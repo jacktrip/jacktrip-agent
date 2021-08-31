@@ -257,6 +257,7 @@ func restartAllServices(config client.AgentConfig, isServer bool) {
 		err = startService(conn, serviceName)
 		if err != nil {
 			log.Error(err, "Unable to start service", "name", serviceName)
+			panic(err)
 		}
 	}
 }
@@ -285,7 +286,7 @@ func stopService(conn *dbus.Conn, u dbus.UnitStatus) error {
 
 // startService is used to start a managed systemd service
 func startService(conn *dbus.Conn, name string) error {
-	log.Info(fmt.Sprintf("Starting managed service %s", name))
+	log.Info("Starting managed service", "name", name)
 
 	reschan := make(chan string)
 	_, err := conn.StartUnit(name, "replace", reschan)
@@ -298,13 +299,13 @@ func startService(conn *dbus.Conn, name string) error {
 	if jobStatus != "done" {
 		return fmt.Errorf("failed to start %s: job status=%s", name, jobStatus)
 	}
-	log.Info(fmt.Sprintf("Finished starting managed service %s", name))
+	log.Info("Finished starting managed service", "name", name)
 	return nil
 }
 
 // startService is used to restart a managed systemd service
 func restartService(name string) error {
-	log.Info(fmt.Sprintf("Restarting managed service %s", name))
+	log.Info("Restarting managed service", "name", name)
 
 	// create dbus connection to manage systemd units
 	conn, err := dbus.New()
@@ -323,6 +324,6 @@ func restartService(name string) error {
 	if jobStatus != "done" {
 		return fmt.Errorf("failed to restart %s: job status=%s", name, jobStatus)
 	}
-	log.Info(fmt.Sprintf("Finished restarting managed service %s", name))
+	log.Info("Finished restarting managed service", "name", name)
 	return nil
 }

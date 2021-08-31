@@ -31,7 +31,7 @@ func runHTTPServer(wg *sync.WaitGroup, router *mux.Router, address string) error
 	if err != nil {
 		log.Error(err, "HTTP server error")
 	}
-	
+
 	return err
 }
 

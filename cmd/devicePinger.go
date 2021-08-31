@@ -25,44 +25,37 @@ import (
 	"github.com/jacktrip/jacktrip-agent/pkg/client"
 )
 
-// Recorder is used as a singleton instance to keep track of RTT times and the latest stats
-type Recorder struct {
-	RttEpochTimes []time.Duration
-	Stats         client.PingStats
-}
-
-// PingRecorderLimit sets the capacity of the RTT array in PingRecorder
-var PingRecorderLimit = 5
-
-// PingRecorder is a singleton instance of Recorder used globally
-var PingRecorder = Recorder{}
-
-// PingAudioServer uses a socket connection to measure a RTT to an audio server
-func PingAudioServer(apiOrigin string, host string, port string) {
+// MeasurePingStats uses a socket connection to measure a RTT to an audio server
+func MeasurePingStats(ping *client.AgentPing, apiOrigin string, host string, port string) {
 	u := url.URL{Scheme: "ws", Host: fmt.Sprintf("%s:%s", host, port), Path: "/ping"}
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+
+	// If a socket connection does not work for the host, use a ICMP ping
 	if err != nil {
 		log.Error(err, fmt.Sprintf("Could not reach the audio server at %s", u.String()))
-		// TODO: see if we need to add ICMP ping
+
+		// Run icmp ping
 		pinger, err := goping.NewPinger(host)
 		if err != nil {
-			log.Error(err, "Failed to create pinger")
+			log.Error(err, "Failed to create a icmp pinger")
 			return
 		}
 
-		log.Info(fmt.Sprintf("Pinging an audio server at %s", host))
-		pinger.Count = int(AgentPingInterval)/1000000000 * 10 // Normalize time into a count
-		pinger.Interval = time.Millisecond * 100
-		pinger.Timeout = AgentPingInterval
-		pinger.Run()
-		
-		PingRecorder.updateStatsWithICMPPing(pinger.Statistics())
-		log.Info(fmt.Sprintf("Finished icmp ping to an %s with stats %+v", host, PingRecorder.Stats))
+		log.Info("Pinging an audio server with ICMP ping", "audio_server_host", host)
+		pinger.Count = AgentPingInterval
+		pinger.Interval = time.Second
+		pinger.Timeout = AgentPingInterval * time.Second
+		pinger.Run() // blocking until done
+
+		updateICMPPing(ping, pinger.Statistics())
 		return
 	}
+
+	// Use an established socket connection for RTT measurement
 	defer c.Close()
 
-	for i := 0; i < PingRecorderLimit; i++ {
+	var socketRtts []time.Duration
+	for i := 0; i < AgentPingInterval; i++ {
 		// Write the current timestamp in nanoseconds
 		start := time.Now()
 		err := c.WriteMessage(websocket.TextMessage, []byte("a"))
@@ -79,36 +72,31 @@ func PingAudioServer(apiOrigin string, host string, port string) {
 		}
 
 		if message[0] == 97 {
-			PingRecorder.addPingRecord(time.Since(start))
+			socketRtts = append(socketRtts, time.Since(start))
 		}
 
-		time.Sleep(1 * time.Second)
+		time.Sleep(time.Second)
 	}
+	updateWSPing(ping, socketRtts)
+	return
 }
 
-func (*Recorder) updateStatsWithICMPPing(icmpStats *goping.Statistics) {
-	PingRecorder.Stats = client.PingStats{}
-	PingRecorder.Stats.MinRtt = icmpStats.MinRtt
-	PingRecorder.Stats.MaxRtt = icmpStats.MaxRtt
-	PingRecorder.Stats.AvgRtt = icmpStats.AvgRtt
-	PingRecorder.Stats.StdDevRtt = icmpStats.StdDevRtt
-	PingRecorder.Stats.LatestRtt = icmpStats.Rtts[len(icmpStats.Rtts) - 1]
-	PingRecorder.Stats.PacketsSent = icmpStats.PacketsSent
-	PingRecorder.Stats.PacketsRecv = icmpStats.PacketsRecv
+// updatePing function takes icmpStats object and update ping statistics
+func updateICMPPing(ping *client.AgentPing, icmpStats *goping.Statistics) {
+	ping.MinRtt = icmpStats.MinRtt
+	ping.MaxRtt = icmpStats.MaxRtt
+	ping.AvgRtt = icmpStats.AvgRtt
+	ping.StdDevRtt = icmpStats.StdDevRtt
+	ping.LatestRtt = icmpStats.Rtts[len(icmpStats.Rtts)-1]
+	ping.PacketsSent = icmpStats.PacketsSent
+	ping.PacketsRecv = icmpStats.PacketsRecv
+	ping.StatsUpdatedAt = time.Now()
 }
 
-func (*Recorder) addPingRecord(pingRecord time.Duration) {
-	if len(PingRecorder.RttEpochTimes) >= PingRecorderLimit {
-		PingRecorder.RttEpochTimes = append(PingRecorder.RttEpochTimes[1:], pingRecord)
-	} else {
-		PingRecorder.RttEpochTimes = append(PingRecorder.RttEpochTimes, pingRecord)
-	}
-	PingRecorder.calculateStats()
-}
-
-func (*Recorder) calculateStats() {
+// updateWSPing takes rtt array to update ping statistics
+func updateWSPing(ping *client.AgentPing, rtts []time.Duration) {
 	var total, minRtt, maxRtt, avgRtt, sd time.Duration
-	for _, rtt := range PingRecorder.RttEpochTimes {
+	for _, rtt := range rtts {
 		total += rtt
 		if rtt < minRtt || minRtt == time.Duration(0) {
 			minRtt = rtt
@@ -117,23 +105,18 @@ func (*Recorder) calculateStats() {
 			maxRtt = rtt
 		}
 	}
-	avgRtt = time.Duration(total.Nanoseconds() / int64(len(PingRecorder.RttEpochTimes)))
 
-	for _, rtt := range PingRecorder.RttEpochTimes {
+	avgRtt = time.Duration(total.Nanoseconds() / int64(len(rtts)))
+
+	for _, rtt := range rtts {
 		sd += (rtt - avgRtt) * (rtt - avgRtt)
 	}
-	PingRecorder.Stats = client.PingStats{}
-	PingRecorder.Stats.MinRtt = minRtt
-	PingRecorder.Stats.MaxRtt = maxRtt
-	PingRecorder.Stats.AvgRtt = avgRtt
-	PingRecorder.Stats.StdDevRtt = time.Duration(math.Sqrt(float64(sd.Nanoseconds() / int64(len(PingRecorder.RttEpochTimes)))))
-	PingRecorder.Stats.LatestRtt = PingRecorder.RttEpochTimes[len(PingRecorder.RttEpochTimes)-1]
-	PingRecorder.Stats.PacketsSent = PingRecorderLimit
-	PingRecorder.Stats.PacketsRecv = len(PingRecorder.RttEpochTimes)
-}
-
-// Reset clears the attributes of PingRecorder
-func (*Recorder) Reset() {
-	PingRecorder.RttEpochTimes = []time.Duration{}
-	PingRecorder.Stats = client.PingStats{}
+	ping.MinRtt = minRtt
+	ping.MaxRtt = maxRtt
+	ping.AvgRtt = avgRtt
+	ping.StdDevRtt = time.Duration(math.Sqrt(float64(sd.Nanoseconds() / int64(len(rtts)))))
+	ping.LatestRtt = rtts[len(rtts)-1]
+	ping.PacketsSent = AgentPingInterval
+	ping.PacketsRecv = len(rtts)
+	ping.StatsUpdatedAt = time.Now()
 }

@@ -84,6 +84,8 @@ const (
 	AzureInstanceIDURL = "http://169.254.169.254/metadata/instance/compute/name?api-version=2017-08-01&format=text"
 )
 
+var lastConfig client.AgentConfig
+
 // runOnServer is used to run jacktrip-agent on an audio cloud server
 func runOnServer(apiOrigin string) {
 	// setup wait group for multiple routines
@@ -138,7 +140,7 @@ func runServerPinger(wg *sync.WaitGroup, ping client.AgentPing, apiOrigin string
 		}
 
 		// sleep in between pings
-		time.Sleep(AgentPingInterval)
+		time.Sleep(AgentPingInterval * time.Second)
 	}
 }
 

@@ -19,6 +19,5 @@ import (
 	"go.uber.org/zap"
 )
 
-//var log = stdr.New(stdlog.New(os.Stderr, "", stdlog.LstdFlags|stdlog.Lshortfile)).WithName("jacktrip.agent")
 var zLogger, _ = zap.NewProduction()
 var log = zapr.NewLogger(zLogger).WithName("jacktrip.agent")

@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/jacktrip/jacktrip-agent/pkg/client"
 )
@@ -27,12 +26,10 @@ import (
 const (
 	// AgentPingURL is the URL used to POST agent pings
 	AgentPingURL = "/agents/ping"
+
+	// AgentPingInterval is an interval between pings
+	AgentPingInterval = 5
 )
-
-// AgentPingInterval is number of seconds in between agent ping requests
-var AgentPingInterval = 5 * time.Second
-
-var lastConfig client.AgentConfig
 
 // sendPing sends ping to service to retrieve config
 func sendPing(ping client.AgentPing, apiOrigin string) (client.AgentConfig, error) {
