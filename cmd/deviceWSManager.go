@@ -26,10 +26,6 @@ import (
 	"github.com/jacktrip/jacktrip-agent/pkg/client"
 )
 
-const (
-	statusPath = "/devices/%s/status"
-)
-
 // WebSocketManager is used to manage a websocket connection to the control plane
 type WebSocketManager struct {
 	Conn             *websocket.Conn
@@ -42,7 +38,7 @@ type WebSocketManager struct {
 }
 
 // InitConnection initializes a new connection if there is no connection or returns an existing connection
-func (wsm *WebSocketManager) InitConnection(wg *sync.WaitGroup, ping *client.AgentPing, apiOrigin string) error {
+func (wsm *WebSocketManager) InitConnection(wg *sync.WaitGroup, ping *client.AgentPing, apiOrigin string, statusPath string) error {
 	if wsm.IsInitialized == true {
 		return nil
 	}
@@ -98,6 +94,7 @@ func (wsm *WebSocketManager) runRecvConfigHandler(wg *sync.WaitGroup) {
 	for {
 		wsm.ReadMu.Lock()
 		_, message, err := wsm.Conn.ReadMessage()
+		log.Info("Found message", "message", string(message))
 		wsm.ReadMu.Unlock()
 
 		var config client.AgentConfig

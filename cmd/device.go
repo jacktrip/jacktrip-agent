@@ -30,6 +30,9 @@ import (
 )
 
 const (
+	// DeviceStatusPath is a WSS API route used for bi-directional updates for a given device
+	DeviceStatusPath = "/devices/%s/status"
+
 	// PathToAvahiServiceFile is the path to the avahi service file for jacktrip-agent
 	PathToAvahiServiceFile = "/tmp/avahi/services/jacktrip-agent.service"
 
@@ -164,7 +167,7 @@ func runDeviceConfigPinger(wg *sync.WaitGroup, ping *client.AgentPing, wsm *WebS
 
 		if currentDeviceConfig.Enabled == true && currentDeviceConfig.Host != "" {
 			// Initialize a socket connection
-			err := wsm.InitConnection(wg, ping, apiOrigin)
+			err := wsm.InitConnection(wg, ping, apiOrigin, DeviceStatusPath)
 			if err != nil {
 				updateDeviceStatus(ping, "error")
 			}
