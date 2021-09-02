@@ -36,9 +36,7 @@ const (
 func sendPing(ping client.AgentPing, apiOrigin string) (client.AgentConfig, error) {
 	var config client.AgentConfig
 
-	if ping.StatsUpdatedAt.IsZero() {
-		ping.StatsUpdatedAt = time.Now()
-	}
+	ping.StatsUpdatedAt = time.Now()
 	
 	// update and encode ping content
 	pingBytes, err := json.Marshal(ping)
