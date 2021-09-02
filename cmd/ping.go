@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/jacktrip/jacktrip-agent/pkg/client"
 )
@@ -35,6 +36,10 @@ const (
 func sendPing(ping client.AgentPing, apiOrigin string) (client.AgentConfig, error) {
 	var config client.AgentConfig
 
+	if ping.StatsUpdatedAt.IsZero() {
+		ping.StatsUpdatedAt = time.Now()
+	}
+	
 	// update and encode ping content
 	pingBytes, err := json.Marshal(ping)
 	if err != nil {
