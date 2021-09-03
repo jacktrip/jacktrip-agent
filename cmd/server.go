@@ -69,7 +69,7 @@ const (
 	SCLangConfigTemplate = "SCLANG_OPTS=%s %s\n"
 
 	// SuperColliderConfigTemplate is the template used to generate /tmp/default/supercollider file on audio servers
-	SuperColliderConfigTemplate = "SC_OPTS=-i %d -o %d -a %d -m %d -z %d -n 4096 -d 2048 %s\n"
+	SuperColliderConfigTemplate = "SC_OPTS=-i %d -o %d -a %d -m %d -z %d -n 4096 -d 2048 -w 2048 %s\n"
 
 	// EC2InstanceIDURL is url using EC2 metadata service that returns the instance-id
 	// See https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-metadata.html
