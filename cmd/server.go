@@ -69,7 +69,7 @@ const (
 	SCLangConfigTemplate = "SCLANG_OPTS=%s %s\n"
 
 	// SuperColliderConfigTemplate is the template used to generate /tmp/default/supercollider file on audio servers
-	SuperColliderConfigTemplate = "SC_OPTS=-i %d -o %d -a %d -m %d -z %d -n 4096 -d 2048 %s\n"
+	SuperColliderConfigTemplate = "SC_OPTS=-i %d -o %d -a %d -m %d -z %d -n 4096 -d 2048 -w 2048\n"
 
 	// EC2InstanceIDURL is url using EC2 metadata service that returns the instance-id
 	// See https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-metadata.html
@@ -228,25 +228,10 @@ func updateSuperColliderConfigs(config client.AgentConfig) {
 		scBufSize = config.Period
 	}
 
-	// append threads when using supernova because the default is way too high/inefficient
-	extraOpts := ""
-	if runtime.NumCPU() <= 50 {
-
-		// use number of physical cores for dsp threads
-		scThreads := runtime.NumCPU() / 2
-		if scThreads > 4 {
-			// there seems to be no advantage of ever using > 4 threads
-			// in fact, it consistently degrades performance
-			scThreads = 4
-		}
-
-		extraOpts = fmt.Sprintf("-T %d", scThreads)
-	}
-
 	// create service config using template
 	scConfig := fmt.Sprintf(SuperColliderConfigTemplate,
 		numInputChannels, numOutputChannels, audioBusses,
-		scMemorySize, scBufSize, extraOpts)
+		scMemorySize, scBufSize)
 
 	// write SuperCollider (supercollider) service config file
 	err := ioutil.WriteFile(PathToSuperColliderConfig, []byte(scConfig), 0644)
