@@ -109,37 +109,37 @@ func runOnDevice(apiOrigin string) {
 
 	// start ping server to send pings and update agent config
 	wg.Add(1)
-	wsm := WebSocketManager{ConfigChannel: make(chan client.AgentConfig, 100), PingStatsChannel: make(chan client.PingStats, 100)}
+	wsm := WebSocketManager{ConfigChannel: make(chan client.AgentConfig, 100), AgentPingChannel: make(chan client.AgentPing, 100)}
 	go runDeviceConfigPinger(&wg, &ping, &wsm, apiOrigin)
+	wg.Add(1)
+	go wsm.sendPingStatsHandler(&wg, &ping, apiOrigin)
+	wg.Add(1)
+	go wsm.recvConfigHandler(&wg)
 
 	// Start a config handler to update config changes
 	wg.Add(1)
-	go runConfigUpdateHandler(&wg, &ping, &wsm)
+	go configUpdateHandler(&wg, &ping, &wsm)
 
 	// wait for everything to complete
 	wg.Wait()
 }
 
-func runConfigUpdateHandler(wg *sync.WaitGroup, ping *client.AgentPing, wsm *WebSocketManager) {
+func configUpdateHandler(wg *sync.WaitGroup, ping *client.AgentPing, wsm *WebSocketManager) {
 	defer wg.Done()
 	log.Info("Starting getDeviceConfigHandler")
 	for {
-		select {
-		case newDeviceConfig, ok := <-wsm.ConfigChannel:
-			if !ok {
-				log.Info("Config channel is closed")
-				return
-			}
-			if newDeviceConfig != currentDeviceConfig {
-				// Check if the new config indicates a disconnect from an audio server. If yes, kill the existing socket as well.
-				if wsm.IsInitialized == true && (newDeviceConfig.Enabled == false || newDeviceConfig.Host == "") {
-					wsm.CloseConnection()
-				}
-				handleDeviceUpdate(ping, newDeviceConfig)
-			}
-		default:
+		newDeviceConfig, ok := <-wsm.ConfigChannel
+		if !ok {
+			log.Info("Config channel is closed")
+			return
 		}
-		time.Sleep(10 * time.Millisecond)
+		if newDeviceConfig != currentDeviceConfig {
+			// Check if the new config indicates a disconnect from an audio server. If yes, kill the existing socket as well.
+			if wsm.IsInitialized && (newDeviceConfig.Enabled == false || newDeviceConfig.Host == "") {
+				wsm.CloseConnection()
+			}
+			handleDeviceUpdate(ping, newDeviceConfig)
+		}
 	}
 }
 
@@ -150,30 +150,27 @@ func runDeviceConfigPinger(wg *sync.WaitGroup, ping *client.AgentPing, wsm *WebS
 
 	for {
 		// If the device isn't connected to an audio server, there is no socket connection to the api server so use a regular ping endpoint.
-		if wsm.IsInitialized == false || currentDeviceConfig.Host == "" {
+		if !wsm.IsInitialized || currentDeviceConfig.Host == "" {
 			newDeviceConfig, err := sendPing(*ping, apiOrigin)
+
 			if err != nil {
 				updateDeviceStatus(ping, "error")
 				panic(err)
 			}
-
 			if newDeviceConfig != currentDeviceConfig {
 				wsm.ConfigChannel <- newDeviceConfig
 			}
 		}
-
+		ResetPing(ping)
 		if currentDeviceConfig.Enabled == true && currentDeviceConfig.Host != "" {
 			// Initialize a socket connection
 			wsm.InitConnection(wg, ping, apiOrigin) // no need for error check since failure defaults to http ping/config exhcange
 
 			// Measure connection latency to the audio server
 			MeasurePingStats(ping, apiOrigin, currentDeviceConfig.Host, HTTPServerPort) // blocks for 5 seconds instead of time sleep
+			wsm.AgentPingChannel <- *ping
 		} else {
 			time.Sleep(AgentPingInterval * time.Second)
-		}
-
-		if currentDeviceConfig.Enabled == true && currentDeviceConfig.Host != "" {
-			wsm.PingStatsChannel <- ping.PingStats
 		}
 	}
 }
