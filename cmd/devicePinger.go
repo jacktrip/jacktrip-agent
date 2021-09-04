@@ -28,12 +28,11 @@ import (
 // MeasurePingStats uses a socket connection to measure a RTT to an audio server
 func MeasurePingStats(ping *client.AgentPing, apiOrigin string, host string, port string) {
 	u := url.URL{Scheme: "ws", Host: fmt.Sprintf("%s:%s", host, port), Path: "/ping"}
-	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	dialer := websocket.Dialer{HandshakeTimeout: 5 * time.Second}
+	c, _, err := dialer.Dial(u.String(), nil)
 
 	// If a socket connection does not work for the host, use a ICMP ping
 	if err != nil {
-		log.Error(err, fmt.Sprintf("Could not reach the audio server at %s", u.String()))
-
 		// Run icmp ping
 		pinger, err := goping.NewPinger(host)
 		if err != nil {
@@ -41,7 +40,6 @@ func MeasurePingStats(ping *client.AgentPing, apiOrigin string, host string, por
 			return
 		}
 
-		log.Info("Pinging an audio server with ICMP ping", "audio_server_host", host)
 		pinger.Count = AgentPingInterval
 		pinger.Interval = time.Second
 		pinger.Timeout = AgentPingInterval * time.Second
@@ -80,6 +78,12 @@ func MeasurePingStats(ping *client.AgentPing, apiOrigin string, host string, por
 	updateWSPing(ping, socketRtts)
 	log.Info("Updated ping stats with websocket ping result")
 	return
+}
+
+// ResetPing resets PingStats
+func ResetPing(ping *client.AgentPing) {
+	ping.PingStats = client.PingStats{}
+	ping.StatsUpdatedAt = time.Now()
 }
 
 // updatePing function takes icmpStats object and update ping statistics

@@ -27,15 +27,13 @@ import (
 )
 
 const (
-	statusPath = "/devices/%s/status"
+	statusPath = "/devices/%s/heartbeat"
 )
 
 // WebSocketManager is used to manage a websocket connection to the control plane
 type WebSocketManager struct {
 	Conn             *websocket.Conn
 	Mu               sync.Mutex
-	ReadMu           sync.Mutex
-	WriteMu          sync.Mutex
 	IsInitialized    bool
 	ConfigChannel    chan client.AgentConfig
 	PingStatsChannel chan client.PingStats
@@ -43,7 +41,7 @@ type WebSocketManager struct {
 
 // InitConnection initializes a new connection if there is no connection or returns an existing connection
 func (wsm *WebSocketManager) InitConnection(wg *sync.WaitGroup, ping *client.AgentPing, apiOrigin string) {
-	if wsm.IsInitialized == true {
+	if wsm.IsInitialized {
 		return
 	}
 
@@ -55,7 +53,6 @@ func (wsm *WebSocketManager) InitConnection(wg *sync.WaitGroup, ping *client.Age
 	}
 	path := fmt.Sprintf("%s%s", u.Path, fmt.Sprintf(statusPath, ping.MAC))
 	wsURL := url.URL{Scheme: scheme, Host: u.Host, Path: path}
-	log.Info("Websocket connecting", "target", wsURL.String())
 
 	// Initialize a websocket to the control plane
 	wsm.Mu.Lock()
@@ -70,16 +67,11 @@ func (wsm *WebSocketManager) InitConnection(wg *sync.WaitGroup, ping *client.Age
 		wsm.IsInitialized = false
 		log.Error(err, "Websocket initialization error")
 	} else {
-		wg.Add(1)
-		go wsm.runRecvConfigHandler(wg)
-		wg.Add(1)
-		go wsm.runSendPingStatsHandler(wg)
-
 		wsm.IsInitialized = true
 		log.Info("Websocket connected", "target", wsURL.String())
 	}
 
-	return 
+	return
 }
 
 // CloseConnection closes an initialized connection in a websocketmanager
@@ -92,54 +84,49 @@ func (wsm *WebSocketManager) CloseConnection() {
 
 // Handlers to be used as a Goroutine
 
-func (wsm *WebSocketManager) runRecvConfigHandler(wg *sync.WaitGroup) {
+func (wsm *WebSocketManager) recvConfigHandler(wg *sync.WaitGroup) {
 	defer wg.Done()
-	log.Info("Starting runRecvConfigHandler")
+	log.Info("Starting recvConfigHandler")
 	for {
-		wsm.ReadMu.Lock()
-		_, message, err := wsm.Conn.ReadMessage()
-		wsm.ReadMu.Unlock()
+		if wsm.IsInitialized {
+			_, message, err := wsm.Conn.ReadMessage()
 
-		var config client.AgentConfig
-		if err != nil {
-			log.Error(err, "[Websocket] Error reading message. Closing the connection.")
-			wsm.CloseConnection()
-			return
+			var config client.AgentConfig
+			if err != nil {
+				log.Error(err, "[Websocket] Error reading message. Closing the connection.")
+				wsm.CloseConnection()
+				continue
+			}
+
+			if err := json.Unmarshal(message, &config); err != nil {
+				log.Error(err, "Failed to unmarshal agent ping response")
+				continue
+			}
+
+			wsm.ConfigChannel <- config
 		}
-
-		if err := json.Unmarshal(message, &config); err != nil {
-			log.Error(err, "Failed to unmarshal agent ping response")
-			continue
-		}
-
-		wsm.ConfigChannel <- config
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 
-func (wsm *WebSocketManager) runSendPingStatsHandler(wg *sync.WaitGroup) {
+func (wsm *WebSocketManager) sendPingStatsHandler(wg *sync.WaitGroup, ping *client.AgentPing, apiOrigin string) {
 	defer wg.Done()
-	log.Info("Starting runSendPingStatsHandler")
+	log.Info("Starting sendPingStatsHandler")
 	for {
-		select {
-		case pingStats := <-wsm.PingStatsChannel:
+		pingStats := <-wsm.PingStatsChannel
+		if wsm.IsInitialized {
 			pingBytes, err := json.Marshal(pingStats)
 			if err != nil {
 				log.Error(err, "Failed to marshal ping stats")
 				continue
 			}
 
-			wsm.WriteMu.Lock()
 			err = wsm.Conn.WriteMessage(websocket.TextMessage, pingBytes)
-			wsm.WriteMu.Unlock()
 
 			if err != nil {
 				log.Error(err, "[Websocket] Failed to send a message. Closing the connection.")
 				wsm.CloseConnection()
-				return
 			}
-		default:
-			time.Sleep(10 * time.Millisecond)
 		}
 	}
 }

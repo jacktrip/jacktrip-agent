@@ -21,7 +21,6 @@ import (
 	"io/ioutil"
 	"os"
 	"regexp"
-	"runtime"
 	"strings"
 
 	"github.com/coreos/go-systemd/v22/dbus"
@@ -219,11 +218,7 @@ func restartAllServices(config client.AgentConfig, isServer bool) {
 	case client.JackTrip:
 		servicesToStart = []string{JackServiceName, JackTripServiceName}
 		if isServer {
-			if runtime.NumCPU() > 50 {
-				servicesToStart = append(servicesToStart, SCSynthServiceName, SCLangServiceName, JackAutoconnectServiceName)
-			} else {
-				servicesToStart = append(servicesToStart, SupernovaServiceName, SCLangServiceName, JackAutoconnectServiceName)
-			}
+			servicesToStart = append(servicesToStart, SCSynthServiceName, SCLangServiceName, JackAutoconnectServiceName)
 		}
 	case client.Jamulus:
 		if isServer {
@@ -235,11 +230,7 @@ func restartAllServices(config client.AgentConfig, isServer bool) {
 		if isServer {
 			servicesToStart = []string{JackServiceName, JackTripServiceName}
 			servicesToStart = append(servicesToStart, JamulusServerServiceName, JamulusBridgeServiceName)
-			if runtime.NumCPU() > 50 {
-				servicesToStart = append(servicesToStart, SCSynthServiceName, SCLangServiceName, JackAutoconnectServiceName)
-			} else {
-				servicesToStart = append(servicesToStart, SupernovaServiceName, SCLangServiceName, JackAutoconnectServiceName)
-			}
+			servicesToStart = append(servicesToStart, SCSynthServiceName, SCLangServiceName, JackAutoconnectServiceName)
 		} else {
 			switch config.Quality {
 			case 0:
