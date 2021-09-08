@@ -1,7 +1,6 @@
 name: Agent CI
 
 on:
-  push:
   pull_request:
     branches:
     - develop

@@ -26,11 +26,12 @@ import (
 // runHTTPServer runs the agent's HTTP server
 func runHTTPServer(wg *sync.WaitGroup, router *mux.Router, address string) error {
 	defer wg.Done()
-	log.Info("Starting agent HTTP server")
+	log.Info("Starting an agent HTTP server")
 	err := http.ListenAndServe(address, router)
 	if err != nil {
 		log.Error(err, "HTTP server error")
 	}
+
 	return err
 }
 
@@ -56,12 +57,16 @@ func handlePingRequest(w http.ResponseWriter, r *http.Request) {
 	for {
 		mt, message, err := c.ReadMessage()
 		if err != nil {
-			log.Error(err, "Unable to read websocket message")
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Error(err, "Unable to read websocket message")
+			}
 			break
 		}
 		err = c.WriteMessage(mt, message)
 		if err != nil {
-			log.Error(err, "Unable to write websocket message")
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Error(err, "Unable to write websocket message")
+			}
 			break
 		}
 	}

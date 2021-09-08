@@ -28,6 +28,23 @@ fmt:
 lint:
 	@golint ./...
 
+# You need to disable root user logic in cmd/main.go
+run_server:
+	@go run ./cmd -s
+
+ssh:
+	@sshpass -p jacktrip ssh pi@jacktrip.local
+
+update_device: agent-arm
+	@mv jacktrip-agent-arm jacktrip-agent
+	@echo 'built a jacktrip-agent binary'
+	@sshpass -p jacktrip ssh pi@jacktrip.local "sudo mount -o remount,rw / && sudo rm /usr/local/bin/jacktrip-agent" || true
+	@echo 'removed jacktrip-agent binary from the device'
+	@sshpass -p jacktrip scp jacktrip-agent pi@jacktrip.local:~
+	@echo 'copied local jacktrip-agent binary into the device'
+	@sshpass -p jacktrip ssh pi@jacktrip.local "sudo mount -o remount,rw / && sudo mv ~/jacktrip-agent /usr/local/bin/jacktrip-agent && sudo systemctl restart jacktrip-agent.service"
+	@echo 'restarted the service'
+	
 small-tests:
 	@go clean -testcache
 	@mkdir -p artifacts

@@ -277,10 +277,11 @@ func stopService(conn *dbus.Conn, u dbus.UnitStatus) error {
 
 // startService is used to start a managed systemd service
 func startService(conn *dbus.Conn, name string) error {
-	log.Info("Starting managed service", "service", name)
+	log.Info("Starting managed service", "name", name)
 
 	reschan := make(chan string)
 	_, err := conn.StartUnit(name, "replace", reschan)
+
 	if err != nil {
 		return fmt.Errorf("failed to start %s: job status=%s", name, err.Error())
 	}
@@ -289,13 +290,13 @@ func startService(conn *dbus.Conn, name string) error {
 	if jobStatus != "done" {
 		return fmt.Errorf("failed to start %s: job status=%s", name, jobStatus)
 	}
-
+	log.Info("Finished starting managed service", "name", name)
 	return nil
 }
 
 // startService is used to restart a managed systemd service
 func restartService(name string) error {
-	log.Info("Restarting managed service", "service", name)
+	log.Info("Restarting managed service", "name", name)
 
 	// create dbus connection to manage systemd units
 	conn, err := dbus.New()
@@ -314,6 +315,6 @@ func restartService(name string) error {
 	if jobStatus != "done" {
 		return fmt.Errorf("failed to restart %s: job status=%s", name, jobStatus)
 	}
-
+	log.Info("Finished restarting managed service", "name", name)
 	return nil
 }
