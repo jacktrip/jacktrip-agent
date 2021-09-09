@@ -29,8 +29,8 @@ import (
 )
 
 const (
-	// ServerStatusPath is a WSS API route used for bi-directional updates for a given studio
-	ServerStatusPath = "/servers/%s/status"
+	// ServerHeartbeatPath is a WSS API route used for bi-directional updates for a given studio
+	ServerHeartbeatPath = "/servers/%s/heartbeat"
 
 	// MaxClientsPerProcessor is the number of JackTrip clients to support per logical processor
 	MaxClientsPerProcessor = 6 // add 1 (20%) for Jamulus bridge, etc

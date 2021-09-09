@@ -26,10 +26,6 @@ import (
 	"github.com/jacktrip/jacktrip-agent/pkg/client"
 )
 
-const (
-	statusPath = "/devices/%s/heartbeat"
-)
-
 // WebSocketManager is used to manage a websocket connection to the control plane
 type WebSocketManager struct {
 	Conn             *websocket.Conn
@@ -51,7 +47,7 @@ func (wsm *WebSocketManager) InitConnection(wg *sync.WaitGroup, ping *client.Age
 	if u.Scheme == "https" {
 		scheme = "wss"
 	}
-	path := fmt.Sprintf("%s%s", u.Path, fmt.Sprintf(statusPath, ping.MAC))
+	path := fmt.Sprintf("%s%s", u.Path, fmt.Sprintf(DeviceHeartbeatPath, ping.MAC))
 	wsURL := url.URL{Scheme: scheme, Host: u.Host, Path: path}
 
 	// Initialize a websocket to the control plane
