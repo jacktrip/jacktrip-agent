@@ -30,6 +30,9 @@ import (
 )
 
 const (
+	// DeviceStatusPath is a WSS API route used for bi-directional updates for a given device
+	DeviceStatusPath = "/devices/%s/status"
+
 	// PathToAvahiServiceFile is the path to the avahi service file for jacktrip-agent
 	PathToAvahiServiceFile = "/tmp/avahi/services/jacktrip-agent.service"
 
