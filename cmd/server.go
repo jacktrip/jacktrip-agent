@@ -105,33 +105,23 @@ func runOnServer(apiOrigin string) {
 	wg.Add(1)
 	go runHTTPServer(&wg, router, fmt.Sprintf("0.0.0.0:%s", HTTPServerPort))
 
-	// get cloud id
-	cloudID := getCloudID()
-
-	// TODO: get credentials
-	credentials := client.AgentCredentials{}
-
 	// start ping server to send pings and update agent config
-	ping := client.AgentPing{
-		AgentCredentials: credentials,
-		CloudID:          cloudID,
-		Version:          getPatchVersion(),
-	}
+	beat := client.ServerHeartbeat{CloudID: getCloudID()}
 	wg.Add(1)
-	go runServerPinger(&wg, ping, apiOrigin)
+	go sendServerHeartbeats(&wg, beat, apiOrigin)
 
 	// wait for everything to complete
 	wg.Wait()
 }
 
-// runServerPinger sends pings to service and manages config updates
-func runServerPinger(wg *sync.WaitGroup, ping client.AgentPing, apiOrigin string) {
+// sendServerHeartbeats sends heartbeat messages to api server and manages config updates
+func sendServerHeartbeats(wg *sync.WaitGroup, beat client.ServerHeartbeat, apiOrigin string) {
 	defer wg.Done()
 
-	log.Info("Starting agent ping server")
+	log.Info("Sending server heartbeats")
 
 	for {
-		config, err := sendPing(ping, apiOrigin)
+		config, err := sendHTTPHeartbeat(beat, apiOrigin)
 		if err != nil {
 			panic(err)
 		}
@@ -143,7 +133,7 @@ func runServerPinger(wg *sync.WaitGroup, ping client.AgentPing, apiOrigin string
 		}
 
 		// sleep in between pings
-		time.Sleep(AgentPingInterval * time.Second)
+		time.Sleep(HeartbeatInterval * time.Second)
 	}
 }
 

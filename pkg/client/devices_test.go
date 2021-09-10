@@ -16,9 +16,10 @@ package client
 
 import (
 	"encoding/json"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestDeviceConfig(t *testing.T) {
@@ -120,18 +121,15 @@ func TestGetAPIHash(t *testing.T) {
 	assert.Equal("b13dabc4285540382af3f280bfc55c0752806a177f896afa8ec568b0206c3bf5", result)
 }
 
-func TestAgentPing(t *testing.T) {
+func TestDeviceHeartbeat(t *testing.T) {
 	assert := assert.New(t)
 	var raw string
-	var target AgentPing
+	var target DeviceHeartbeat
 
-	// Parse JSON into AgentPing struct
-	raw = `{"apiPrefix": "black", "apiSecret": "pink", "cloudId": "aws", "mac": "00:1B:44:11:3A:B7", "version": "1.0.0", "type": "snd_rpi_hifiberry_dacplusadcpro", "pkts_recv": 832, "pkts_sent": 3, "min_rtt": 3, "max_rtt": -5, "avg_rtt": 301, "stddev_rtt": -10291, "stats_updated_at": "2021-08-11T10:28:32.487013776Z"}`
-	target = AgentPing{}
+	// Parse JSON into DeviceHeartbeat struct
+	raw = `{"mac": "00:1B:44:11:3A:B7", "version": "1.0.0", "type": "snd_rpi_hifiberry_dacplusadcpro", "pkts_recv": 832, "pkts_sent": 3, "min_rtt": 3, "max_rtt": -5, "avg_rtt": 301, "stddev_rtt": -10291, "stats_updated_at": "2021-08-11T10:28:32.487013776Z"}`
+	target = DeviceHeartbeat{}
 	json.Unmarshal([]byte(raw), &target)
-	assert.Equal("black", target.APIPrefix)
-	assert.Equal("pink", target.APISecret)
-	assert.Equal("aws", target.CloudID)
 	assert.Equal("00:1B:44:11:3A:B7", target.MAC)
 	assert.Equal("1.0.0", target.Version)
 	assert.Equal("snd_rpi_hifiberry_dacplusadcpro", target.Type)

@@ -61,3 +61,9 @@ type ServerConfig struct {
 	// true if enabled
 	Enabled types.BitBool `json:"enabled" db:"enabled"`
 }
+
+// ServerHeartbeat is used to send heartbeat messages from servers / studios
+type ServerHeartbeat struct {
+	// Cloud identifier for server (used when running on cloud audio server)
+	CloudID string `json:"cloudId"`
+}

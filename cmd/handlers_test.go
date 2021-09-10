@@ -15,10 +15,11 @@
 package main
 
 import (
-	"github.com/stretchr/testify/assert"
-	"io"
+	"io/ioutil"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type TestPayload struct {
@@ -48,7 +49,7 @@ func TestHandlePingRequestNoWS(t *testing.T) {
 	mockReq.Header.Set("Upgrade", "nada")
 	handlePingRequest(mockResp, mockReq)
 	resp := mockResp.Result()
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := ioutil.ReadAll(resp.Body)
 
 	tests := []TestResponseHeaders{
 		// Check Content-Type header
@@ -109,7 +110,7 @@ func TestRespondJSONValid(t *testing.T) {
 	payload := TestPayload{"mr-worldwide"}
 	RespondJSON(mockResp, 299, payload)
 	resp := mockResp.Result()
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := ioutil.ReadAll(resp.Body)
 
 	tests := []TestResponseHeaders{
 		// Check Content-Type header
@@ -139,7 +140,7 @@ func TestRespondJSONInvalid(t *testing.T) {
 	payload := make(chan int)
 	RespondJSON(mockResp, 298, payload)
 	resp := mockResp.Result()
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := ioutil.ReadAll(resp.Body)
 
 	tests := []TestResponseHeaders{
 		// Check Content-Type header

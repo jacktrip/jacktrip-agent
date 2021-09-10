@@ -31,30 +31,32 @@ type WebSocketManager struct {
 	Conn             *websocket.Conn
 	Mu               sync.Mutex
 	IsInitialized    bool
+	APIOrigin        string
+	Credentials      client.AgentCredentials
 	ConfigChannel    chan client.AgentConfig
-	PingStatsChannel chan client.PingStats
+	HeartbeatChannel chan client.DeviceHeartbeat
 }
 
 // InitConnection initializes a new connection if there is no connection or returns an existing connection
-func (wsm *WebSocketManager) InitConnection(wg *sync.WaitGroup, ping *client.AgentPing, apiOrigin string) {
+func (wsm *WebSocketManager) InitConnection(wg *sync.WaitGroup, mac string) {
 	if wsm.IsInitialized {
 		return
 	}
 
 	// Parse url and format a ws(s) url
-	u, _ := url.Parse(apiOrigin)
+	u, _ := url.Parse(wsm.APIOrigin)
 	scheme := "ws"
 	if u.Scheme == "https" {
 		scheme = "wss"
 	}
-	path := fmt.Sprintf("%s%s", u.Path, fmt.Sprintf(DeviceHeartbeatPath, ping.MAC))
+	path := fmt.Sprintf("%s%s", u.Path, fmt.Sprintf(DeviceHeartbeatPath, mac))
 	wsURL := url.URL{Scheme: scheme, Host: u.Host, Path: path}
 
 	// Initialize a websocket to the control plane
 	wsm.Mu.Lock()
 	h := http.Header{"Origin": []string{"http://jacktrip.local"}}
-	h.Set("APISecret", ping.APISecret)
-	h.Set("APIPrefix", ping.APIPrefix)
+	h.Set("APISecret", wsm.Credentials.APISecret)
+	h.Set("APIPrefix", wsm.Credentials.APIPrefix)
 	c, _, err := websocket.DefaultDialer.Dial(wsURL.String(), h)
 	wsm.Conn = c
 	wsm.Mu.Unlock()
@@ -83,41 +85,47 @@ func (wsm *WebSocketManager) CloseConnection() {
 func (wsm *WebSocketManager) recvConfigHandler(wg *sync.WaitGroup) {
 	defer wg.Done()
 	log.Info("Starting recvConfigHandler")
+
 	for {
-		if wsm.IsInitialized {
-			_, message, err := wsm.Conn.ReadMessage()
-
-			var config client.AgentConfig
-			if err != nil {
-				log.Error(err, "[Websocket] Error reading message. Closing the connection.")
-				wsm.CloseConnection()
-				continue
-			}
-
-			if err := json.Unmarshal(message, &config); err != nil {
-				log.Error(err, "Failed to unmarshal agent ping response")
-				continue
-			}
-
-			wsm.ConfigChannel <- config
+		if !wsm.IsInitialized {
+			// sleep while not connected to avoid inf loop
+			time.Sleep(time.Second)
+			continue
 		}
-		time.Sleep(50 * time.Millisecond)
+
+		// read config message
+		wsm.Conn.SetReadDeadline(time.Now().Add(time.Minute * 5)) // timeout after 5 minutes
+		_, message, err := wsm.Conn.ReadMessage()
+		if err != nil {
+			log.Error(err, "[Websocket] Error reading message. Closing the connection.")
+			wsm.CloseConnection()
+			continue
+		}
+
+		var config client.AgentConfig
+		if err := json.Unmarshal(message, &config); err != nil {
+			log.Error(err, "Failed to unmarshal heartbeat response")
+			continue
+		}
+
+		wsm.ConfigChannel <- config
 	}
 }
 
-func (wsm *WebSocketManager) sendPingStatsHandler(wg *sync.WaitGroup, ping *client.AgentPing, apiOrigin string) {
+func (wsm *WebSocketManager) sendHeartbeatHandler(wg *sync.WaitGroup) {
 	defer wg.Done()
-	log.Info("Starting sendPingStatsHandler")
+	log.Info("Starting sendHeartbeatHandler")
+
 	for {
-		pingStats := <-wsm.PingStatsChannel
+		beat := <-wsm.HeartbeatChannel
 		if wsm.IsInitialized {
-			pingBytes, err := json.Marshal(pingStats)
+			beatBytes, err := json.Marshal(beat)
 			if err != nil {
-				log.Error(err, "Failed to marshal ping stats")
+				log.Error(err, "Failed to marshal heartbeat message")
 				continue
 			}
 
-			err = wsm.Conn.WriteMessage(websocket.TextMessage, pingBytes)
+			err = wsm.Conn.WriteMessage(websocket.TextMessage, beatBytes)
 
 			if err != nil {
 				log.Error(err, "[Websocket] Failed to send a message. Closing the connection.")

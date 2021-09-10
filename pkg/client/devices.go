@@ -92,7 +92,7 @@ type PingStats struct {
 	StdDevRtt time.Duration `json:"stddev_rtt" db:"stddev_rtt"`
 
 	// LatestRtt is the latest rtt sent via socket ping.
-	LatestRtt time.Duration `json:"latest_rtt db:"latest_rtt"`
+	LatestRtt time.Duration `json:"latest_rtt" db:"latest_rtt"`
 
 	// timestamp when the device stats were last updated
 	StatsUpdatedAt time.Time `json:"stats_updated_at" db:"stats_updated_at"`
@@ -112,13 +112,9 @@ func GetAPIHash(apiSecret string) string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(apiSecret)))
 }
 
-// AgentPing is used to receive ping from a device
-type AgentPing struct {
-	AgentCredentials
+// DeviceHeartbeat is used to send heartbeat messages from devices
+type DeviceHeartbeat struct {
 	PingStats
-
-	// Cloud identifier for server (used when running on cloud audio server)
-	CloudID string `json:"cloudId"`
 
 	// MAC address for ethernet device (used when running on raspberry pi device)
 	MAC string `json:"mac"`

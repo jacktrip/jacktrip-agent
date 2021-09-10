@@ -26,7 +26,7 @@ import (
 )
 
 // MeasurePingStats uses a socket connection to measure a RTT to an audio server
-func MeasurePingStats(ping *client.AgentPing, apiOrigin string, host string, port string) {
+func MeasurePingStats(beat *client.DeviceHeartbeat, apiOrigin string, host string, port string) {
 	u := url.URL{Scheme: "ws", Host: fmt.Sprintf("%s:%s", host, port), Path: "/ping"}
 	dialer := websocket.Dialer{HandshakeTimeout: 5 * time.Second}
 	c, _, err := dialer.Dial(u.String(), nil)
@@ -40,12 +40,12 @@ func MeasurePingStats(ping *client.AgentPing, apiOrigin string, host string, por
 			return
 		}
 
-		pinger.Count = AgentPingInterval
+		pinger.Count = HeartbeatInterval
 		pinger.Interval = time.Second
-		pinger.Timeout = AgentPingInterval * time.Second
+		pinger.Timeout = HeartbeatInterval * time.Second
 		pinger.Run() // blocking until done
-		updateICMPPing(ping, pinger.Statistics())
-		log.Info("Updated ping stats with ICMP ping result")
+		updateICMPPing(beat, pinger.Statistics())
+		log.Info("Updated device heartbeat with ICMP ping result")
 		return
 	}
 
@@ -53,7 +53,7 @@ func MeasurePingStats(ping *client.AgentPing, apiOrigin string, host string, por
 	defer c.Close()
 
 	var socketRtts []time.Duration
-	for i := 0; i < AgentPingInterval; i++ {
+	for i := 0; i < HeartbeatInterval; i++ {
 		// Write the current timestamp in nanoseconds
 		start := time.Now()
 		err := c.WriteMessage(websocket.TextMessage, []byte("a"))
@@ -75,31 +75,25 @@ func MeasurePingStats(ping *client.AgentPing, apiOrigin string, host string, por
 
 		time.Sleep(time.Second)
 	}
-	updateWSPing(ping, socketRtts)
-	log.Info("Updated ping stats with websocket ping result")
+	updateWSPing(beat, socketRtts)
+	log.Info("Updated device heartbeat with websocket ping result")
 	return
 }
 
-// ResetPing resets PingStats
-func ResetPing(ping *client.AgentPing) {
-	ping.PingStats = client.PingStats{}
-	ping.StatsUpdatedAt = time.Now()
-}
-
 // updatePing function takes icmpStats object and update ping statistics
-func updateICMPPing(ping *client.AgentPing, icmpStats *goping.Statistics) {
-	ping.MinRtt = icmpStats.MinRtt
-	ping.MaxRtt = icmpStats.MaxRtt
-	ping.AvgRtt = icmpStats.AvgRtt
-	ping.StdDevRtt = icmpStats.StdDevRtt
-	ping.LatestRtt = icmpStats.Rtts[len(icmpStats.Rtts)-1]
-	ping.PacketsSent = icmpStats.PacketsSent
-	ping.PacketsRecv = icmpStats.PacketsRecv
-	ping.StatsUpdatedAt = time.Now()
+func updateICMPPing(beat *client.DeviceHeartbeat, icmpStats *goping.Statistics) {
+	beat.MinRtt = icmpStats.MinRtt
+	beat.MaxRtt = icmpStats.MaxRtt
+	beat.AvgRtt = icmpStats.AvgRtt
+	beat.StdDevRtt = icmpStats.StdDevRtt
+	beat.LatestRtt = icmpStats.Rtts[len(icmpStats.Rtts)-1]
+	beat.PacketsSent = icmpStats.PacketsSent
+	beat.PacketsRecv = icmpStats.PacketsRecv
+	beat.StatsUpdatedAt = time.Now()
 }
 
 // updateWSPing takes rtt array to update ping statistics
-func updateWSPing(ping *client.AgentPing, rtts []time.Duration) {
+func updateWSPing(beat *client.DeviceHeartbeat, rtts []time.Duration) {
 	var total, minRtt, maxRtt, avgRtt, sd time.Duration
 	for _, rtt := range rtts {
 		total += rtt
@@ -116,12 +110,12 @@ func updateWSPing(ping *client.AgentPing, rtts []time.Duration) {
 	for _, rtt := range rtts {
 		sd += (rtt - avgRtt) * (rtt - avgRtt)
 	}
-	ping.MinRtt = minRtt
-	ping.MaxRtt = maxRtt
-	ping.AvgRtt = avgRtt
-	ping.StdDevRtt = time.Duration(math.Sqrt(float64(sd.Nanoseconds() / int64(len(rtts)))))
-	ping.LatestRtt = rtts[len(rtts)-1]
-	ping.PacketsSent = AgentPingInterval
-	ping.PacketsRecv = len(rtts)
-	ping.StatsUpdatedAt = time.Now()
+	beat.MinRtt = minRtt
+	beat.MaxRtt = maxRtt
+	beat.AvgRtt = avgRtt
+	beat.StdDevRtt = time.Duration(math.Sqrt(float64(sd.Nanoseconds() / int64(len(rtts)))))
+	beat.LatestRtt = rtts[len(rtts)-1]
+	beat.PacketsSent = HeartbeatInterval
+	beat.PacketsRecv = len(rtts)
+	beat.StatsUpdatedAt = time.Now()
 }
