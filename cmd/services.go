@@ -97,7 +97,10 @@ func updateServiceConfigs(config client.AgentConfig, remoteName string, isServer
 			channels = 2
 		}
 
-		jackTripConfig = fmt.Sprintf(JackTripDeviceConfigTemplate, channels, config.Host, config.Port, config.DevicePort, remoteName, strings.TrimSpace(jackTripExtraOpts))
+		receiveChannels := config.ReceiveChannels // output channels
+		sendChannels := config.SendChannels  // input channels
+
+		jackTripConfig = fmt.Sprintf(JackTripDeviceConfigTemplate, receiveChannels, sendChannels, config.Host, config.Port, config.DevicePort, remoteName, strings.TrimSpace(jackTripExtraOpts))
 	}
 
 	// ensure config directory exists
