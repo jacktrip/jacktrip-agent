@@ -16,6 +16,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -38,9 +39,9 @@ type WebSocketManager struct {
 }
 
 // InitConnection initializes a new connection if there is no connection or returns an existing connection
-func (wsm *WebSocketManager) InitConnection(wg *sync.WaitGroup, mac string) {
+func (wsm *WebSocketManager) InitConnection(wg *sync.WaitGroup, mac string) error {
 	if wsm.IsInitialized {
-		return
+		return nil
 	}
 
 	// Parse url and format a ws(s) url
@@ -63,13 +64,13 @@ func (wsm *WebSocketManager) InitConnection(wg *sync.WaitGroup, mac string) {
 
 	if err != nil {
 		wsm.IsInitialized = false
-		log.Error(err, "Websocket initialization error")
-	} else {
-		wsm.IsInitialized = true
-		log.Info("Websocket connected", "target", wsURL.String())
+		return errors.New("Websocket initialization error")
 	}
 
-	return
+	wsm.IsInitialized = true
+	log.Info("Websocket connected", "target", wsURL.String())
+
+	return nil
 }
 
 // CloseConnection closes an initialized connection in a websocketmanager

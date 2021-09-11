@@ -165,35 +165,40 @@ func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm 
 		if currentDeviceConfig.Enabled == true && currentDeviceConfig.Host != "" {
 			// device is connected to an audio server
 
-			// Initialize a socket connection (do nothing if already connected)
-			wsm.InitConnection(wg, beat.MAC) // no need for error check since failure defaults to http heartbeat/config exchange
-
 			// Measure connection latency to the audio server
 			MeasurePingStats(beat, apiOrigin, currentDeviceConfig.Host, HTTPServerPort) // blocks for 5 seconds instead of time sleep
 
-			// send heartbeat to channel, for delivery over websocket
-			wsm.HeartbeatChannel <- *beat
-
-		} else {
-			// device isn't connected to an audio server
-			// there is no websocket connection to the api server so use a HTTP endpoint
-
-			// reset ping stats to be empty, with current timestamp
-			beat.PingStats = client.PingStats{StatsUpdatedAt: time.Now()}
-
-			// send http heartbeat message to api server
-			newDeviceConfig, err := sendHTTPHeartbeat(*beat, wsm.Credentials, apiOrigin)
-			if err != nil {
-				updateDeviceStatus(*beat, wsm.Credentials, "error")
-				panic(err)
+			// Initialize a socket connection (do nothing if already connected)
+			err := wsm.InitConnection(wg, beat.MAC)
+			if err == nil {
+				// send heartbeat to channel, for delivery over websocket
+				wsm.HeartbeatChannel <- *beat
+				continue
 			}
 
-			// send config to channel
-			wsm.ConfigChannel <- newDeviceConfig
+			// fallback to sending heartbeat to HTTP endpoint if there is an error with websocket
+
+		} else {
+			// device is not connected to an audio server
 
 			// sleep for heartbeat interval
 			time.Sleep(HeartbeatInterval * time.Second)
+
+			// reset ping stats to be empty, with current timestamp
+			beat.PingStats = client.PingStats{StatsUpdatedAt: time.Now()}
 		}
+
+		// there is no websocket connection to the api server, so send heartbeat to HTTP endpoint
+
+		// send http heartbeat message to api server
+		newDeviceConfig, err := sendHTTPHeartbeat(*beat, wsm.Credentials, apiOrigin)
+		if err != nil {
+			updateDeviceStatus(*beat, wsm.Credentials, "error")
+			panic(err)
+		}
+
+		// send device config received from response to channel
+		wsm.ConfigChannel <- newDeviceConfig
 	}
 }
 
