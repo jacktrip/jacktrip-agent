@@ -19,50 +19,51 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/jacktrip/jacktrip-agent/pkg/client"
 )
 
 const (
-	// AgentPingURL is the URL used to POST agent pings
+	// AgentPingURL is the URL used to POST HTTP heartbeats
 	AgentPingURL = "/agents/ping"
 
-	// AgentPingInterval is an interval between pings
-	AgentPingInterval = 5
+	// HeartbeatInterval is an interval between heartbeats
+	HeartbeatInterval = 5
 )
 
-// sendPing sends ping to service to retrieve config
-func sendPing(ping client.AgentPing, apiOrigin string) (client.AgentConfig, error) {
+// sendHTTPHeartbeat sends HTTP heartbeat to api and receives latest config
+func sendHTTPHeartbeat(beat interface{}, credentials client.AgentCredentials, apiOrigin string) (client.AgentConfig, error) {
 	var config client.AgentConfig
 
-	ping.StatsUpdatedAt = time.Now()
-
-	// update and encode ping content
-	pingBytes, err := json.Marshal(ping)
+	// update and encode heartbeat content
+	beatBytes, err := json.Marshal(beat)
 	if err != nil {
-		log.Error(err, "Failed to marshal agent ping request")
+		log.Error(err, "Failed to marshal agent heartbeat request")
 		return config, err
 	}
 
-	// send ping request
-	r, err := http.Post(fmt.Sprintf("%s%s", apiOrigin, AgentPingURL), "application/json", bytes.NewReader(pingBytes))
+	// send heartbeat request
+	client := &http.Client{}
+	req, _ := http.NewRequest("POST", fmt.Sprintf("%s%s", apiOrigin, AgentPingURL), bytes.NewReader(beatBytes))
+	req.Header.Set("APIPrefix", credentials.APIPrefix)
+	req.Header.Set("APISecret", credentials.APISecret)
+	r, err := client.Do(req)
 	if err != nil {
-		log.Error(err, "Failed to send agent ping request")
+		log.Error(err, "Failed to send agent heartbeat request")
 		return config, err
 	}
 	defer r.Body.Close()
 
 	// check response status
 	if r.StatusCode != http.StatusOK {
-		log.Info("Bad response from agent ping", "status", r.StatusCode)
+		log.Info("Bad response from agent heartbeat", "status", r.StatusCode)
 		return config, err
 	}
 
 	// decode config from response
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&config); err != nil {
-		log.Error(err, "Failed to unmarshal agent ping response")
+		log.Error(err, "Failed to unmarshal agent heartbeat response")
 		return config, err
 	}
 

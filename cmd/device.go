@@ -102,34 +102,44 @@ func runOnDevice(apiOrigin string) {
 	go runHTTPServer(&wg, router, ":80")
 
 	// update avahi service config and restart daemon
-	ping := client.AgentPing{
-		AgentCredentials: credentials,
-		MAC:              mac,
-		Version:          getPatchVersion(),
-		Type:             soundDeviceType,
+	beat := client.DeviceHeartbeat{
+		MAC:     mac,
+		Version: getPatchVersion(),
+		Type:    soundDeviceType,
+		PingStats: client.PingStats{
+			StatsUpdatedAt: time.Now(),
+		},
 	}
-	updateAvahiServiceConfig(&ping, lastDeviceStatus)
+	updateAvahiServiceConfig(beat, credentials, lastDeviceStatus)
 
-	// start ping server to send pings and update agent config
+	// start sending heartbeats and updating agent configs
+	wsm := WebSocketManager{
+		ConfigChannel:    make(chan client.AgentConfig, 100),
+		HeartbeatChannel: make(chan client.DeviceHeartbeat, 100),
+		APIOrigin:        apiOrigin,
+		Credentials:      credentials,
+	}
 	wg.Add(1)
-	wsm := WebSocketManager{ConfigChannel: make(chan client.AgentConfig, 100), PingStatsChannel: make(chan client.PingStats, 100)}
-	go runDeviceConfigPinger(&wg, &ping, &wsm, apiOrigin)
-	wg.Add(1)
-	go wsm.sendPingStatsHandler(&wg, &ping, apiOrigin)
+	go wsm.sendHeartbeatHandler(&wg)
 	wg.Add(1)
 	go wsm.recvConfigHandler(&wg)
 
+	// start sending heartbeats and updating agent configs
+	wg.Add(1)
+	go sendDeviceHeartbeats(&wg, &beat, &wsm, apiOrigin)
+
 	// Start a config handler to update config changes
 	wg.Add(1)
-	go configUpdateHandler(&wg, &ping, &wsm)
+	go deviceConfigUpdateHandler(&wg, &beat, &wsm)
 
 	// wait for everything to complete
 	wg.Wait()
 }
 
-func configUpdateHandler(wg *sync.WaitGroup, ping *client.AgentPing, wsm *WebSocketManager) {
+// deviceConfigUpdateHandler receives and processes device config updates
+func deviceConfigUpdateHandler(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager) {
 	defer wg.Done()
-	log.Info("Starting getDeviceConfigHandler")
+	log.Info("Starting deviceConfigUpdateHandler")
 	for {
 		newDeviceConfig, ok := <-wsm.ConfigChannel
 		if !ok {
@@ -141,45 +151,59 @@ func configUpdateHandler(wg *sync.WaitGroup, ping *client.AgentPing, wsm *WebSoc
 			if wsm.IsInitialized && (newDeviceConfig.Enabled == false || newDeviceConfig.Host == "") {
 				wsm.CloseConnection()
 			}
-			handleDeviceUpdate(ping, newDeviceConfig)
+			handleDeviceUpdate(beat, wsm.Credentials, newDeviceConfig)
 		}
 	}
 }
 
-// runDeviceConfigPinger sends pings to service and manages config updates
-func runDeviceConfigPinger(wg *sync.WaitGroup, ping *client.AgentPing, wsm *WebSocketManager, apiOrigin string) {
+// sendDeviceHeartbeats sends device heartbeat messages to the backend api, and receives config updates
+func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager, apiOrigin string) {
 	defer wg.Done()
-	log.Info("Starting agent ping server")
+	log.Info("Sending device heartbeats")
 
 	for {
-		// If the device isn't connected to an audio server, there is no socket connection to the api server so use a regular ping endpoint.
-		if !wsm.IsInitialized || currentDeviceConfig.Host == "" {
-			newDeviceConfig, err := sendPing(*ping, apiOrigin)
-
-			if err != nil {
-				updateDeviceStatus(ping, "error")
-				panic(err)
-			}
-			if newDeviceConfig != currentDeviceConfig {
-				wsm.ConfigChannel <- newDeviceConfig
-			}
-		}
-		ResetPing(ping)
 		if currentDeviceConfig.Enabled == true && currentDeviceConfig.Host != "" {
-			// Initialize a socket connection
-			wsm.InitConnection(wg, ping, apiOrigin) // no need for error check since failure defaults to http ping/config exhcange
+			// device is connected to an audio server
 
 			// Measure connection latency to the audio server
-			MeasurePingStats(ping, apiOrigin, currentDeviceConfig.Host, HTTPServerPort) // blocks for 5 seconds instead of time sleep
-			wsm.PingStatsChannel <- ping.PingStats
+			MeasurePingStats(beat, apiOrigin, currentDeviceConfig.Host, HTTPServerPort) // blocks for 5 seconds instead of time sleep
+
+			// Initialize a socket connection (do nothing if already connected)
+			err := wsm.InitConnection(wg, beat.MAC)
+			if err == nil {
+				// send heartbeat to channel, for delivery over websocket
+				wsm.HeartbeatChannel <- *beat
+				continue
+			}
+
+			// fallback to sending heartbeat to HTTP endpoint if there is an error with websocket
+
 		} else {
-			time.Sleep(AgentPingInterval * time.Second)
+			// device is not connected to an audio server
+
+			// sleep for heartbeat interval
+			time.Sleep(HeartbeatInterval * time.Second)
+
+			// reset ping stats to be empty, with current timestamp
+			beat.PingStats = client.PingStats{StatsUpdatedAt: time.Now()}
 		}
+
+		// there is no websocket connection to the api server, so send heartbeat to HTTP endpoint
+
+		// send http heartbeat message to api server
+		newDeviceConfig, err := sendHTTPHeartbeat(*beat, wsm.Credentials, apiOrigin)
+		if err != nil {
+			updateDeviceStatus(*beat, wsm.Credentials, "error")
+			panic(err)
+		}
+
+		// send device config received from response to channel
+		wsm.ConfigChannel <- newDeviceConfig
 	}
 }
 
 // handleDeviceUpdate handles updates to device configuratiosn
-func handleDeviceUpdate(ping *client.AgentPing, config client.AgentConfig) {
+func handleDeviceUpdate(beat *client.DeviceHeartbeat, credentials client.AgentCredentials, config client.AgentConfig) {
 	// update ALSA card settings
 	if config.ALSAConfig != currentDeviceConfig.ALSAConfig {
 		updateALSASettings(config)
@@ -191,7 +215,7 @@ func handleDeviceUpdate(ping *client.AgentPing, config client.AgentConfig) {
 		// more changes required -> reset everything
 
 		// update managed config files
-		updateServiceConfigs(config, strings.Replace(ping.MAC, ":", "", -1), false)
+		updateServiceConfigs(config, strings.Replace(beat.MAC, ":", "", -1), false)
 
 		// shutdown or restart managed services
 		restartAllServices(config, false)
@@ -201,9 +225,9 @@ func handleDeviceUpdate(ping *client.AgentPing, config client.AgentConfig) {
 
 	// update device status in avahi service config, if necessary
 	if config.Enabled {
-		updateDeviceStatus(ping, "connected")
+		updateDeviceStatus(*beat, credentials, "connected")
 	} else {
-		updateDeviceStatus(ping, "not connected")
+		updateDeviceStatus(*beat, credentials, "not connected")
 	}
 }
 
@@ -426,7 +450,7 @@ func updateALSASettingsUSBPnPSoundDevice(config client.AgentConfig) {
 }
 
 // updateAvahiServiceConfig generates a new /etc/avahi/services/jacktrip-agent.service file
-func updateAvahiServiceConfig(ping *client.AgentPing, status string) {
+func updateAvahiServiceConfig(beat client.DeviceHeartbeat, credentials client.AgentCredentials, status string) {
 	// ensure config directory exists
 	err := os.MkdirAll("/tmp/avahi/services", 0755)
 	if err != nil {
@@ -434,7 +458,7 @@ func updateAvahiServiceConfig(ping *client.AgentPing, status string) {
 		return
 	}
 
-	apiHash := client.GetAPIHash(ping.APISecret)
+	apiHash := client.GetAPIHash(credentials.APISecret)
 	avahiServiceConfig := fmt.Sprintf(`<?xml version="1.0" standalone='no'?><!--*-nxml-*-->
 <!DOCTYPE service-group SYSTEM "avahi-service.dtd">
 <service-group>
@@ -448,7 +472,7 @@ func updateAvahiServiceConfig(ping *client.AgentPing, status string) {
 		<txt-record value-format="text">apiHash=%s</txt-record>
 	</service>
 </service-group>
-`, status, ping.Version, ping.MAC, apiHash)
+`, status, beat.Version, beat.MAC, apiHash)
 
 	err = ioutil.WriteFile(PathToAvahiServiceFile, []byte(avahiServiceConfig), 0644)
 	if err != nil {
@@ -459,10 +483,10 @@ func updateAvahiServiceConfig(ping *client.AgentPing, status string) {
 }
 
 // updateDeviceStatus updates the device status, including avahi config, if it has changed
-func updateDeviceStatus(ping *client.AgentPing, status string) {
+func updateDeviceStatus(beat client.DeviceHeartbeat, credentials client.AgentCredentials, status string) {
 	log.Info(fmt.Sprintf("Updated device status to %s", status))
 	if lastDeviceStatus != status {
-		updateAvahiServiceConfig(ping, status)
+		updateAvahiServiceConfig(beat, credentials, status)
 		lastDeviceStatus = status
 	}
 }

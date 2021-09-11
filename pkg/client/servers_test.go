@@ -16,8 +16,9 @@ package client
 
 import (
 	"encoding/json"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestConstants(t *testing.T) {
@@ -45,4 +46,16 @@ func TestServerConfig(t *testing.T) {
 	assert.Equal(true, bool(target.Stereo))
 	assert.Equal(false, bool(target.LoopBack))
 	assert.Equal(true, bool(target.Enabled))
+}
+
+func TestServerHeartbeat(t *testing.T) {
+	assert := assert.New(t)
+	var raw string
+	var target ServerHeartbeat
+
+	// Parse JSON into DeviceHeartbeat struct
+	raw = `{"cloudId": "aws"}`
+	target = ServerHeartbeat{}
+	json.Unmarshal([]byte(raw), &target)
+	assert.Equal("aws", target.CloudID)
 }
