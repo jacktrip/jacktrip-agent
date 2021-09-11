@@ -32,7 +32,7 @@ const (
 )
 
 // sendHTTPHeartbeat sends HTTP heartbeat to api and receives latest config
-func sendHTTPHeartbeat(beat interface{}, apiOrigin string) (client.AgentConfig, error) {
+func sendHTTPHeartbeat(beat interface{}, credentials client.AgentCredentials, apiOrigin string) (client.AgentConfig, error) {
 	var config client.AgentConfig
 
 	// update and encode heartbeat content
@@ -43,7 +43,11 @@ func sendHTTPHeartbeat(beat interface{}, apiOrigin string) (client.AgentConfig, 
 	}
 
 	// send heartbeat request
-	r, err := http.Post(fmt.Sprintf("%s%s", apiOrigin, AgentPingURL), "application/json", bytes.NewReader(beatBytes))
+	client := &http.Client{}
+	req, _ := http.NewRequest("POST", fmt.Sprintf("%s%s", apiOrigin, AgentPingURL), bytes.NewReader(beatBytes))
+	req.Header.Set("APIPrefix", credentials.APIPrefix)
+	req.Header.Set("APISecret", credentials.APISecret)
+	r, err := client.Do(req)
 	if err != nil {
 		log.Error(err, "Failed to send agent heartbeat request")
 		return config, err

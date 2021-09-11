@@ -182,7 +182,7 @@ func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm 
 			beat.PingStats = client.PingStats{StatsUpdatedAt: time.Now()}
 
 			// send http heartbeat message to api server
-			newDeviceConfig, err := sendHTTPHeartbeat(*beat, apiOrigin)
+			newDeviceConfig, err := sendHTTPHeartbeat(*beat, wsm.Credentials, apiOrigin)
 			if err != nil {
 				updateDeviceStatus(*beat, wsm.Credentials, "error")
 				panic(err)

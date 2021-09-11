@@ -105,23 +105,26 @@ func runOnServer(apiOrigin string) {
 	wg.Add(1)
 	go runHTTPServer(&wg, router, fmt.Sprintf("0.0.0.0:%s", HTTPServerPort))
 
+	// TODO: get server credentials
+	credentials := client.AgentCredentials{}
+
 	// start ping server to send pings and update agent config
 	beat := client.ServerHeartbeat{CloudID: getCloudID()}
 	wg.Add(1)
-	go sendServerHeartbeats(&wg, beat, apiOrigin)
+	go sendServerHeartbeats(&wg, beat, credentials, apiOrigin)
 
 	// wait for everything to complete
 	wg.Wait()
 }
 
 // sendServerHeartbeats sends heartbeat messages to api server and manages config updates
-func sendServerHeartbeats(wg *sync.WaitGroup, beat client.ServerHeartbeat, apiOrigin string) {
+func sendServerHeartbeats(wg *sync.WaitGroup, beat client.ServerHeartbeat, credentials client.AgentCredentials, apiOrigin string) {
 	defer wg.Done()
 
 	log.Info("Sending server heartbeats")
 
 	for {
-		config, err := sendHTTPHeartbeat(beat, apiOrigin)
+		config, err := sendHTTPHeartbeat(beat, credentials, apiOrigin)
 		if err != nil {
 			panic(err)
 		}
