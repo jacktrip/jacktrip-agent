@@ -52,9 +52,6 @@ type ServerConfig struct {
 	// sample rate frequency (48000 or 96000)
 	SampleRate int `json:"sampleRate" db:"sample_rate"`
 
-	// true if stereo, false if mono
-	Stereo types.BitBool `json:"stereo" db:"stereo"`
-
 	// true if client's audio should loop back to them
 	LoopBack types.BitBool `json:"loopback" db:"loopback"`
 

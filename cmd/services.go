@@ -85,20 +85,15 @@ func updateServiceConfigs(config client.AgentConfig, remoteName string, isServer
 			jackTripExtraOpts = fmt.Sprintf("%s -f \"%s\"", jackTripExtraOpts, strings.TrimSpace(jackTripEffects))
 		}
 
-		// check if loopback
-		//hubpatch := 2
-		//if config.LoopBack {
-		//	hubpatch = 4
-		//}
-
-		// check if stereo
-		channels := 1
-		if config.Stereo {
-			channels = 2
+		receiveChannels := config.OutputChannels // audio signals from the audio server to the user, hence receiveChannels
+		if receiveChannels == 0 {
+			receiveChannels = 2 // default output channels is stereo
 		}
 
-		receiveChannels := config.ReceiveChannels // output channels
-		sendChannels := config.SendChannels  // input channels
+		sendChannels := config.InputChannels // audio signals to the audio server from user's input, hence sendChannels
+		if sendChannels == 0 {
+			sendChannels = 1 // default input channels is mono
+		}
 
 		jackTripConfig = fmt.Sprintf(JackTripDeviceConfigTemplate, receiveChannels, sendChannels, config.Host, config.Port, config.DevicePort, remoteName, strings.TrimSpace(jackTripExtraOpts))
 	}
