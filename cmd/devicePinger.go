@@ -28,10 +28,10 @@ import (
 // MeasurePingStats uses a socket connection to measure a RTT to an audio server
 func MeasurePingStats(beat *client.DeviceHeartbeat, apiOrigin string, host string, port string) {
 	u := url.URL{Scheme: "ws", Host: fmt.Sprintf("%s:%s", host, port), Path: "/ping"}
-	dialer := websocket.Dialer{HandshakeTimeout: 5 * time.Second}
-	c, _, err := dialer.Dial(u.String(), nil)
+	dialer := websocket.Dialer{HandshakeTimeout: time.Second}
+	c, _, err := dialer.Dial(u.String(), nil) // this may block for HandshakeTimeout if the connection fails
 
-	// If a socket connection does not work for the host, use a ICMP ping
+	// If a socket connection does not work for the host, use a ICMP ping (note: this normally should take 4 seconds)
 	if err != nil {
 		// Run icmp ping
 		pinger, err := goping.NewPinger(host)
@@ -45,7 +45,7 @@ func MeasurePingStats(beat *client.DeviceHeartbeat, apiOrigin string, host strin
 		pinger.Timeout = HeartbeatInterval * time.Second
 		pinger.Run() // blocking until done
 		updateICMPPing(beat, pinger.Statistics())
-		log.Info("Updated device heartbeat with ICMP ping result")
+		log.V(1).Info("Updated device heartbeat with ICMP ping result")
 		return
 	}
 
@@ -76,7 +76,7 @@ func MeasurePingStats(beat *client.DeviceHeartbeat, apiOrigin string, host strin
 		time.Sleep(time.Second)
 	}
 	updateWSPing(beat, socketRtts)
-	log.Info("Updated device heartbeat with websocket ping result")
+	log.V(1).Info("Updated device heartbeat with websocket ping result")
 	return
 }
 

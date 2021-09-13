@@ -67,5 +67,7 @@ func sendHTTPHeartbeat(beat interface{}, credentials client.AgentCredentials, ap
 		return config, err
 	}
 
+	log.V(1).Info("Sent heartbeat message via HTTP")
+
 	return config, nil
 }
