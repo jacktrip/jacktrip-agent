@@ -41,6 +41,16 @@ type DeviceConfig struct {
 	// 1: high quality Jamulus (medium)
 	// 2: JackTrip (high)
 	Quality int `json:"quality" db:"quality"`
+
+	// Input Channel Count
+	// 1: mono
+	// 2: stereo
+	InputChannels int `json:"inputChannels" db:"input_channels"`
+
+	// Outputs Channel Count
+	// 1: mono
+	// 2: stereo
+	OutputChannels int `json:"outputChannels" db:"output_channels"`
 }
 
 // ALSAConfig defines configuration for a device's ALSA sound card
