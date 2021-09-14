@@ -16,7 +16,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -35,11 +34,12 @@ type WebSocketManager struct {
 	APIOrigin        string
 	Credentials      client.AgentCredentials
 	ConfigChannel    chan client.AgentConfig
-	HeartbeatChannel chan client.DeviceHeartbeat
+	HeartbeatChannel chan interface{}
+	HeartbeatPath    string
 }
 
 // InitConnection initializes a new connection if there is no connection or returns an existing connection
-func (wsm *WebSocketManager) InitConnection(wg *sync.WaitGroup, mac string) error {
+func (wsm *WebSocketManager) InitConnection(wg *sync.WaitGroup, id string) error {
 	if wsm.IsInitialized {
 		return nil
 	}
@@ -50,7 +50,7 @@ func (wsm *WebSocketManager) InitConnection(wg *sync.WaitGroup, mac string) erro
 	if u.Scheme == "https" {
 		scheme = "wss"
 	}
-	path := fmt.Sprintf("%s%s", u.Path, fmt.Sprintf(DeviceHeartbeatPath, mac))
+	path := fmt.Sprintf("%s%s", u.Path, fmt.Sprintf(wsm.HeartbeatPath, id))
 	wsURL := url.URL{Scheme: scheme, Host: u.Host, Path: path}
 
 	// Initialize a websocket to the control plane
@@ -64,7 +64,7 @@ func (wsm *WebSocketManager) InitConnection(wg *sync.WaitGroup, mac string) erro
 
 	if err != nil {
 		wsm.IsInitialized = false
-		return errors.New("Websocket initialization error")
+		return err
 	}
 
 	wsm.IsInitialized = true

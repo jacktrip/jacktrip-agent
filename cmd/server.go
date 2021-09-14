@@ -108,32 +108,63 @@ func runOnServer(apiOrigin string) {
 	// TODO: get server credentials
 	credentials := client.AgentCredentials{}
 
-	// start ping server to send pings and update agent config
 	beat := client.ServerHeartbeat{CloudID: getCloudID()}
+
+	wsm := WebSocketManager{
+		ConfigChannel:    make(chan client.AgentConfig, 100),
+		HeartbeatChannel: make(chan interface{}, 100),
+		APIOrigin:        apiOrigin,
+		Credentials:      credentials,
+		HeartbeatPath:    ServerHeartbeatPath,
+	}
 	wg.Add(1)
-	go sendServerHeartbeats(&wg, beat, credentials, apiOrigin)
+	go wsm.recvConfigHandler(&wg)
+	wg.Add(1)
+	go wsm.sendHeartbeatHandler(&wg)
+
+	// start ping server to send pings and update agent config
+	wg.Add(1)
+	go sendServerHeartbeats(&wg, &beat, &wsm)
+
+	// Start a config handler to update config changes
+	wg.Add(1)
+	go serverConfigUpdateHandler(&wg, &wsm)
 
 	// wait for everything to complete
 	wg.Wait()
 }
 
+// serverConfigUpdateHandler receives and processes server config updates
+func serverConfigUpdateHandler(wg *sync.WaitGroup, wsm *WebSocketManager) {
+	defer wg.Done()
+	log.Info("Starting serverConfigUpdateHandler")
+	for {
+		newServerConfig, ok := <-wsm.ConfigChannel
+		if !ok {
+			log.Info("Config channel is closed")
+			return
+		}
+		if newServerConfig != lastConfig {
+			log.Info("Config updated", "value", newServerConfig)
+			handleServerUpdate(newServerConfig)
+		}
+	}
+}
+
 // sendServerHeartbeats sends heartbeat messages to api server and manages config updates
-func sendServerHeartbeats(wg *sync.WaitGroup, beat client.ServerHeartbeat, credentials client.AgentCredentials, apiOrigin string) {
+func sendServerHeartbeats(wg *sync.WaitGroup, beat *client.ServerHeartbeat, wsm *WebSocketManager) {
 	defer wg.Done()
 
 	log.Info("Sending server heartbeats")
 
 	for {
-		config, err := sendHTTPHeartbeat(beat, credentials, apiOrigin)
+		err := wsm.InitConnection(wg, beat.CloudID)
 		if err != nil {
+			log.Error(err, "Failed to initiate websocket conncetion")
 			panic(err)
 		}
 
-		// check if config has changed
-		if config != lastConfig {
-			log.Info("Config updated", "value", config)
-			handleServerUpdate(config)
-		}
+		wsm.HeartbeatChannel <- *beat
 
 		// sleep in between pings
 		time.Sleep(HeartbeatInterval * time.Second)
@@ -202,7 +233,6 @@ func getCloudID() string {
 	}
 
 	log.Info("Retrieved instance-id", "id", cloudID)
-
 	return cloudID
 }
 

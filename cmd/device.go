@@ -115,9 +115,10 @@ func runOnDevice(apiOrigin string) {
 	// start sending heartbeats and updating agent configs
 	wsm := WebSocketManager{
 		ConfigChannel:    make(chan client.AgentConfig, 100),
-		HeartbeatChannel: make(chan client.DeviceHeartbeat, 100),
+		HeartbeatChannel: make(chan interface{}, 100),
 		APIOrigin:        apiOrigin,
 		Credentials:      credentials,
+		HeartbeatPath:    DeviceHeartbeatPath,
 	}
 	wg.Add(1)
 	go wsm.sendHeartbeatHandler(&wg)
@@ -126,7 +127,7 @@ func runOnDevice(apiOrigin string) {
 
 	// start sending heartbeats and updating agent configs
 	wg.Add(1)
-	go sendDeviceHeartbeats(&wg, &beat, &wsm, apiOrigin)
+	go sendDeviceHeartbeats(&wg, &beat, &wsm)
 
 	// Start a config handler to update config changes
 	wg.Add(1)
@@ -159,7 +160,7 @@ func deviceConfigUpdateHandler(wg *sync.WaitGroup, beat *client.DeviceHeartbeat,
 }
 
 // sendDeviceHeartbeats sends device heartbeat messages to the backend api, and receives config updates
-func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager, apiOrigin string) {
+func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager) {
 	defer wg.Done()
 	log.Info("Sending device heartbeats")
 	firstHeartbeat := true
@@ -169,7 +170,7 @@ func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm 
 			// device is connected to an audio server
 
 			// Measure connection latency to the audio server
-			MeasurePingStats(beat, apiOrigin, currentDeviceConfig.Host, HTTPServerPort) // blocks for 5 seconds instead of time sleep
+			MeasurePingStats(beat, wsm.APIOrigin, currentDeviceConfig.Host, HTTPServerPort) // blocks for 5 seconds instead of time sleep
 
 			// Initialize a socket connection (do nothing if already connected)
 			err := wsm.InitConnection(wg, beat.MAC)
@@ -200,7 +201,7 @@ func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm 
 		// there is no websocket connection to the api server, so send heartbeat to HTTP endpoint
 
 		// send http heartbeat message to api server
-		newDeviceConfig, err := sendHTTPHeartbeat(*beat, wsm.Credentials, apiOrigin)
+		newDeviceConfig, err := sendHTTPHeartbeat(*beat, wsm.Credentials, wsm.APIOrigin)
 		if err != nil {
 			updateDeviceStatus(*beat, wsm.Credentials, "error")
 			panic(err)
