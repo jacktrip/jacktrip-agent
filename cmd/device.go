@@ -147,6 +147,8 @@ func deviceConfigUpdateHandler(wg *sync.WaitGroup, beat *client.DeviceHeartbeat,
 			return
 		}
 		if newDeviceConfig != currentDeviceConfig {
+			log.Info("Config updated", "value", newDeviceConfig)
+
 			// Check if the new config indicates a disconnect from an audio server. If yes, kill the existing socket as well.
 			if wsm.IsInitialized && (newDeviceConfig.Enabled == false || newDeviceConfig.Host == "") {
 				wsm.CloseConnection()
@@ -160,6 +162,7 @@ func deviceConfigUpdateHandler(wg *sync.WaitGroup, beat *client.DeviceHeartbeat,
 func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager, apiOrigin string) {
 	defer wg.Done()
 	log.Info("Sending device heartbeats")
+	firstHeartbeat := true
 
 	for {
 		if currentDeviceConfig.Enabled == true && currentDeviceConfig.Host != "" {
@@ -177,12 +180,18 @@ func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm 
 			}
 
 			// fallback to sending heartbeat to HTTP endpoint if there is an error with websocket
+			log.Error(err, "Falling back to HTTP heartbeats")
 
 		} else {
 			// device is not connected to an audio server
 
-			// sleep for heartbeat interval
-			time.Sleep(HeartbeatInterval * time.Second)
+			if firstHeartbeat {
+				// don't sleep before sending first heartbeat
+				firstHeartbeat = false
+			} else {
+				// sleep for heartbeat interval
+				time.Sleep(HeartbeatInterval * time.Second)
+			}
 
 			// reset ping stats to be empty, with current timestamp
 			beat.PingStats = client.PingStats{StatsUpdatedAt: time.Now()}
@@ -204,14 +213,18 @@ func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm 
 
 // handleDeviceUpdate handles updates to device configuratiosn
 func handleDeviceUpdate(beat *client.DeviceHeartbeat, credentials client.AgentCredentials, config client.AgentConfig) {
+	// update current config sooner, so that other goroutines will have the most up-to-date version
+	lastDeviceConfig := currentDeviceConfig
+	currentDeviceConfig = config
+
 	// update ALSA card settings
-	if config.ALSAConfig != currentDeviceConfig.ALSAConfig {
+	if config.ALSAConfig != lastDeviceConfig.ALSAConfig {
 		updateALSASettings(config)
 	}
 
 	// check if ALSA card settings was the only change
-	currentDeviceConfig.ALSAConfig = config.ALSAConfig
-	if config != currentDeviceConfig {
+	lastDeviceConfig.ALSAConfig = config.ALSAConfig
+	if config != lastDeviceConfig {
 		// more changes required -> reset everything
 
 		// update managed config files
@@ -220,8 +233,6 @@ func handleDeviceUpdate(beat *client.DeviceHeartbeat, credentials client.AgentCr
 		// shutdown or restart managed services
 		restartAllServices(config, false)
 	}
-
-	currentDeviceConfig = config
 
 	// update device status in avahi service config, if necessary
 	if config.Enabled {

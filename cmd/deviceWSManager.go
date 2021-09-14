@@ -131,6 +131,8 @@ func (wsm *WebSocketManager) sendHeartbeatHandler(wg *sync.WaitGroup) {
 			if err != nil {
 				log.Error(err, "[Websocket] Failed to send a message. Closing the connection.")
 				wsm.CloseConnection()
+			} else {
+				log.V(1).Info("Sent heartbeat message via websocket")
 			}
 		}
 	}
