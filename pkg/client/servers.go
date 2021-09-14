@@ -53,6 +53,8 @@ type ServerConfig struct {
 	SampleRate int `json:"sampleRate" db:"sample_rate"`
 
 	// true if stereo, false if mono
+	// this field will be replaced by deviceConfig's input and output channels
+	// don't delete it for backward compatibility
 	Stereo types.BitBool `json:"stereo" db:"stereo"`
 
 	// true if client's audio should loop back to them
