@@ -86,13 +86,17 @@ func updateServiceConfigs(config client.AgentConfig, remoteName string, isServer
 		}
 
 		receiveChannels := config.OutputChannels // audio signals from the audio server to the user, hence receiveChannels
-		if receiveChannels == 0 {
-			receiveChannels = 2 // default output channels is stereo
-		}
-
-		sendChannels := config.InputChannels // audio signals to the audio server from user's input, hence sendChannels
-		if sendChannels == 0 {
-			sendChannels = 1 // default input channels is mono
+		sendChannels := config.InputChannels     // audio signals to the audio server from user's input, hence sendChannels
+		if config.Stereo {
+			if receiveChannels == 0 {
+				receiveChannels = 2 // default output channels is stereo
+			}
+			if sendChannels == 0 {
+				sendChannels = 1 // default input channels is mono
+			}
+		} else {
+			receiveChannels = 1
+			sendChannels = 1
 		}
 
 		jackTripConfig = fmt.Sprintf(JackTripDeviceConfigTemplate, receiveChannels, sendChannels, config.Host, config.Port, config.DevicePort, remoteName, strings.TrimSpace(jackTripExtraOpts))
