@@ -21,6 +21,10 @@ jobs:
       uses: max/secret-scan@master
       with:
         exclude_path: '.github/workflows/secret-scan-denylist.txt'
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libjack-jackd2-dev
     - name: Format and lint
       run: |
         go env -w GOFLAGS=-mod=mod

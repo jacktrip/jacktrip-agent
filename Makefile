@@ -17,10 +17,10 @@
 all: lint fmt agent-amd64 agent-arm
 
 agent-amd64:
-	@GOOS=linux GOARCH=amd64 go build -o jacktrip-agent-amd64 ./cmd
+	@docker buildx build --platform linux/amd64 --target=artifact --output type=local,dest=./ .
 
 agent-arm:
-	@GOOS=linux GOARCH=arm go build -o jacktrip-agent-arm ./cmd
+	@docker buildx build --platform linux/arm/v7 --target=artifact --output type=local,dest=./ .
 
 fmt:
 	@gofmt -l -w `find ./ -name "*.go"`
