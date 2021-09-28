@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/xthexder/go-jack"
 )
@@ -26,8 +27,6 @@ import (
 const (
 	// CHANNELS is the default number of channels per client
 	CHANNELS = 2
-	// EEXIST is an error code used to indicate existing connections
-	EEXIST = 17
 	// JT_* are pattern-matching tokens used to discover JACK ports
 	JT_RECEIVE    = ":receive_"
 	JT_SEND       = ":send_"
@@ -66,7 +65,7 @@ func NewAutoConnector() *AutoConnector {
 }
 
 // handlePortRegistration signals the notification channel when a new port is registered
-// NOTE: We cannot modify ports in the callback/notification thread so use the notification channel
+// NOTE: We cannot modify ports in the callback thread so use a channel
 func handlePortRegistration(port jack.PortId, register bool) {
 	if register {
 		registrationChan <- port
@@ -107,6 +106,9 @@ func (ac *AutoConnector) getServerPortName(serverChannel int, input bool) string
 
 // isValidPort verifies a JACK port exists
 func (ac *AutoConnector) isValidPort(name string) bool {
+	if name == "" {
+		return false
+	}
 	if p := ac.JackClient.GetPortByName(name); p != nil {
 		return true
 	}
@@ -114,14 +116,27 @@ func (ac *AutoConnector) isValidPort(name string) bool {
 	return false
 }
 
+// isConnected checks if a JACK connection exists from src->dest
+// NOTE: go-jack does not implement the "jack_port_connected_to"
+func (ac *AutoConnector) isConnected(src, dest string) bool {
+	p := ac.JackClient.GetPortByName(src)
+	for _, conn := range p.GetConnections() {
+		if conn == dest {
+			return true
+		}
+	}
+	return false
+}
+
 // connectPorts establishes a directed connection between two JACK ports
-// NOTE: go-jack does not implement the "jack_port_connected_to" - handling this by ignoring EEXIST codes
 func (ac *AutoConnector) connectPorts(src, dest string) {
+	if ac.isConnected(src, dest) {
+		return
+	}
 	code := ac.JackClient.Connect(src, dest)
 	switch code {
 	case 0:
-		log.Info(fmt.Sprintf("Connected output port %s to %s", src, dest))
-	case EEXIST:
+		log.Info("Connected JACK ports", "src", src, "dest", dest)
 	default:
 		log.Error(jack.StrError(code), "Unexpected error occurred connecting JACK ports")
 	}
@@ -193,39 +208,67 @@ func (ac *AutoConnector) connectJamulusSuperCollider() {
 	}
 }
 
+// onShutdown only runs when upon unexpected connection error
+func (ac *AutoConnector) onShutdown() {
+	ac.ClientLock.Lock()
+	defer ac.ClientLock.Unlock()
+	ac.JackClient = nil
+	// Wait for jackd to restart, then notify channel recipient to re-initialize client
+	time.Sleep(5*time.Second)
+	registrationChan <- jack.PortId(0)
+}
+
 func (ac *AutoConnector) TeardownClient() {
 	ac.ClientLock.Lock()
 	defer ac.ClientLock.Unlock()
 	if ac.JackClient != nil {
 		ac.JackClient.Close()
-		ac.JackClient = nil
 	}
+	ac.JackClient = nil
+	log.Info("Teardown of JACK client completed")
 }
 
 func (ac *AutoConnector) SetupClient() {
 	ac.ClientLock.Lock()
 	defer ac.ClientLock.Unlock()
-	client, code := jack.ClientOpen(ac.Name, jack.NoStartServer)
-	if code != 0 {
+	waitForDaemon()
+	ac.JackClient = initClient(ac.Name, handlePortRegistration, ac.onShutdown)
+	log.Info("Setup of JACK client completed", "name", ac.JackClient.GetName())
+}
+
+func initClient(name string, portReg jack.PortRegistrationCallback, shutdown jack.ShutdownCallback) *jack.Client {
+	client, code := jack.ClientOpen(name, jack.NoStartServer)
+	if client == nil || code != 0 {
 		log.Error(jack.StrError(code), "Failed to create client")
+		return nil
 	}
-	if code := client.SetPortRegistrationCallback(handlePortRegistration); code != 0 {
-		log.Error(jack.StrError(code), "Failed to set port registration callback")
+	if portReg != nil {
+		if code := client.SetPortRegistrationCallback(portReg); code != 0 {
+			log.Error(jack.StrError(code), "Failed to set port registration callback")
+			return nil
+		}
+	}
+	if shutdown != nil {
+		client.OnShutdown(shutdown)
 	}
 	if code := client.Activate(); code != 0 {
 		log.Error(jack.StrError(code), "Failed to activate client")
+		return nil
 	}
-	ac.JackClient = client
+	return client
 }
 
 // Helper function to connect JACK ports in a thread-safe manner
 func (ac *AutoConnector) connect() {
 	ac.ClientLock.Lock()
 	defer ac.ClientLock.Unlock()
-	if ac.JackClient != nil {
-		ac.connectJackTripSuperCollider()
-		ac.connectJamulusSuperCollider()
+	if ac.JackClient == nil {
+		waitForDaemon()
+		ac.JackClient = initClient(ac.Name, handlePortRegistration, ac.onShutdown)
+		log.Info("Setup of JACK client completed", "name", ac.JackClient.GetName())
 	}
+	ac.connectJackTripSuperCollider()
+	ac.connectJamulusSuperCollider()
 }
 
 func (ac *AutoConnector) Run(wg *sync.WaitGroup) {
@@ -241,10 +284,27 @@ func (ac *AutoConnector) Run(wg *sync.WaitGroup) {
 	}
 }
 
-// Extract name and channel number from a given JACK port
+// extractClientInfo returns the name and channel number from a given JACK port
 func extractClientInfo(port, sep string) (string, int) {
 	data := strings.SplitN(port, sep, 2)
 	name := data[0]
 	channel, _ := strconv.Atoi(data[1])
 	return name, channel
+}
+
+// jack_wait reimplementation
+func waitForDaemon() {
+	for i := 0; i < 10; i++ {
+		time.Sleep(time.Second)
+		client := initClient("", nil, nil)
+		if client == nil {
+			continue
+		}
+		if code := client.Close(); code != 0 {
+			log.Error(jack.StrError(code), "Failed to close client")
+			continue
+		}
+		log.Info("Found running JACK daemon")
+		break
+	}
 }

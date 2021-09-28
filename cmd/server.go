@@ -202,7 +202,6 @@ func handleServerUpdate(config client.AgentConfig) {
 		// jack client will error when the server is only using Jamulus
 		if config.Type != client.Jamulus {
 			// this sleep was necessary otherwise ports aren't found?
-			time.Sleep(time.Second)
 			ac.SetupClient()
 		}
 	}
