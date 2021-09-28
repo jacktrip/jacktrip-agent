@@ -1,0 +1,54 @@
+name: Build (develop)
+
+on:
+  push:
+    branches:
+    - develop
+
+jobs:
+  build:
+    name: Verify code
+    runs-on: ubuntu-20.04
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+    - name: Setup golang
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.16.x
+    - name: Scan hardcoded secrets
+      uses: max/secret-scan@master
+      with:
+        exclude_path: '.github/workflows/secret-scan-denylist.txt'
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libjack-jackd2-dev
+    - name: Format and lint
+      run: |
+        go env -w GOFLAGS=-mod=mod
+        go get -u golang.org/x/lint/golint
+        make fmt
+        make lint
+    - name: Small tests
+      run: |
+        go env -w GOFLAGS=-mod=mod
+        go get gotest.tools/gotestsum
+        make small-tests
+    - name: Report
+      uses: mikepenz/action-junit-report@v2
+      with:
+        check_name: Small tests
+        report_paths: 'artifacts/results-small.xml'
+    - name: Build
+      run: |
+        make agent-amd64
+        GIT_SHA=`git rev-parse --short=12 HEAD`
+        FILENAME=jacktrip-agent-amd64-${GIT_SHA}.tar.gz
+        tar cvzf ${FILENAME} ./jacktrip-agent-amd64
+        sha256sum ${FILENAME} | tee -a ${FILENAME}.sha256
+    - name: Archive artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: jacktrip-agent-amd64
+        path: jacktrip-agent-amd64-*
