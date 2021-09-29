@@ -16,6 +16,7 @@ package main
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,50 +26,52 @@ import (
 )
 
 const (
-	// CHANNELS is the default number of channels per client
-	CHANNELS = 2
-	// JT_* are pattern-matching tokens used to discover JACK ports
-	JT_RECEIVE    = ":receive_"
-	JT_SEND       = ":send_"
-	JT_RECEIVE_RX = ".*:receive_.*"
-	JT_SEND_RX    = ".*:send_.*"
-	// SC_* are pattern-matching tokens used to find SuperCollider ports
-	SC_IN  = "SuperCollider:in_"
-	SC_OUT = "SuperCollider:out_"
-	// SN_* are pattern-matching tokens used to find supernova ports
-	SN_IN  = "supernova:input_"
-	SN_OUT = "supernova:output_"
-	// JAMULUS_* are pattern-matching tokens used to find Jamulus ports
-	JAMULUS_INPUT_LEFT   = "Jamulus:input left"
-	JAMULUS_INPUT_RIGHT  = "Jamulus:input right"
-	JAMULUS_OUTPUT_LEFT  = "Jamulus:output left"
-	JAMULUS_OUTPUT_RIGHT = "Jamulus:output right"
+	// Default number of channels per client
+	defaultChannels = 2
+	// Regex pattern used to find JackTrip ports
+	jacktripPortToken = `:(send|receive)_`
+	// Prefix tokens used to find SuperCollider ports
+	supercolliderInput  = "SuperCollider:in_"
+	supercolliderOutput = "SuperCollider:out_"
+	// Prefix tokens used to find supernova ports
+	supernovaInput  = "supernova:input_"
+	supernovaOutput = "supernova:output_"
+	// Jamulus port names
+	jamulusInputLeft   = "Jamulus:input left"
+	jamulusInputRight  = "Jamulus:input right"
+	jamulusOutputLeft  = "Jamulus:output left"
+	jamulusOutputRight = "Jamulus:output right"
 )
 
-// registrationChan is a singleton channel used for notifications
-var registrationChan chan jack.PortId = make(chan jack.PortId)
-
+// AutoConnector manages JACK clients and keep tracks of clients
 type AutoConnector struct {
-	Name         string
-	Channels     int
-	JackClient   *jack.Client
-	ClientLock   sync.Mutex
-	KnownClients map[string]int
+	Name             string
+	Channels         int
+	JTRegexp         *regexp.Regexp
+	JackClient       *jack.Client
+	ClientLock       sync.Mutex
+	JamulusChecked   bool
+	KnownClients     map[string]int
+	RegistrationChan chan jack.PortId
 }
 
+// NewAutoConnector constructs a new instance of AutoConnector
 func NewAutoConnector() *AutoConnector {
 	return &AutoConnector{
-		Name:         "autoconnector",
-		Channels:     CHANNELS,
-		KnownClients: map[string]int{"Jamulus": 0},
+		Name:             "autoconnector",
+		Channels:         defaultChannels,
+		JTRegexp:         regexp.MustCompile(jacktripPortToken),
+		JamulusChecked:   false,
+		KnownClients:     map[string]int{"Jamulus": 0},
+		RegistrationChan: make(chan jack.PortId, 200),
 	}
 }
 
 // handlePortRegistration signals the notification channel when a new port is registered
 // NOTE: We cannot modify ports in the callback thread so use a channel
-func handlePortRegistration(port jack.PortId, register bool) {
+func (ac *AutoConnector) handlePortRegistration(port jack.PortId, register bool) {
 	if register {
-		registrationChan <- port
+		ac.RegistrationChan <- port
 	}
 }
 
@@ -90,10 +93,10 @@ func (ac *AutoConnector) getServerChannel(clientName string, clientChannel int) 
 }
 
 // getServerPortName finds the first-available port between SuperCollider and supernova
-func (ac *AutoConnector) getServerPortName(serverChannel int, input bool) string {
-	opts := []string{SC_OUT, SN_OUT}
-	if input {
-		opts = []string{SC_IN, SN_IN}
+func (ac *AutoConnector) getServerPortName(serverChannel int, isInput bool) string {
+	opts := []string{supercolliderOutput, supernovaOutput}
+	if isInput {
+		opts = []string{supercolliderInput, supernovaInput}
 	}
 	for _, opt := range opts {
 		result := fmt.Sprintf("%s%d", opt, serverChannel)
@@ -138,34 +141,27 @@ func (ac *AutoConnector) connectPorts(src, dest string) {
 	case 0:
 		log.Info("Connected JACK ports", "src", src, "dest", dest)
 	default:
-		log.Error(jack.StrError(code), "Unexpected error occurred connecting JACK ports")
+		log.Error(jack.StrError(code), "Unexpected error connecting JACK ports")
 	}
 }
 
 // connectJackTripSuperCollider establishes JackTrip<->SuperCollider audio connections
-func (ac *AutoConnector) connectJackTripSuperCollider() {
-	var clientName, serverPortName string
-	var clientChannelNum, serverChannel int
-
-	// Iterate over all output ports that match JackTrip receive pattern
-	outPorts := ac.JackClient.GetPorts(JT_RECEIVE_RX, "", jack.PortIsOutput)
-	for _, port := range outPorts {
-		clientName, clientChannelNum = extractClientInfo(port, JT_RECEIVE)
-		serverChannel = ac.getServerChannel(clientName, clientChannelNum)
-		serverPortName = ac.getServerPortName(serverChannel, true)
-		if ac.isValidPort(serverPortName) {
-			ac.connectPorts(port, serverPortName)
-		}
+func (ac *AutoConnector) connectJackTripSuperCollider(port *jack.Port) {
+	clientName := port.GetClientName()
+	suffix := port.GetShortName()
+	data := strings.SplitN(suffix, "_", 2)
+	clientChannelNum, _ := strconv.Atoi(data[len(data)-1])
+	isInput := true
+	if strings.HasPrefix(suffix, "send_") {
+		isInput = false
 	}
-
-	// Iterate over all input ports that match JackTrip send pattern
-	inPorts := ac.JackClient.GetPorts(JT_SEND_RX, "", jack.PortIsInput)
-	for _, port := range inPorts {
-		clientName, clientChannelNum = extractClientInfo(port, JT_SEND)
-		serverChannel = ac.getServerChannel(clientName, clientChannelNum)
-		serverPortName = ac.getServerPortName(serverChannel, false)
-		if ac.isValidPort(serverPortName) {
-			ac.connectPorts(serverPortName, port)
+	serverChannel := ac.getServerChannel(clientName, clientChannelNum)
+	serverPortName := ac.getServerPortName(serverChannel, isInput)
+	if ac.isValidPort(serverPortName) {
+		if isInput {
+			ac.connectPorts(port.GetName(), serverPortName)
+		} else {
+			ac.connectPorts(serverPortName, port.GetName())
 		}
 	}
 }
@@ -173,10 +169,10 @@ func (ac *AutoConnector) connectJackTripSuperCollider() {
 // connectJamulusSuperCollider establishes Jamulus<->SuperCollider audio connections
 func (ac *AutoConnector) connectJamulusSuperCollider() {
 	// Return early if Jamulus ports are not active
-	jil := ac.JackClient.GetPortByName(JAMULUS_INPUT_LEFT)
-	jir := ac.JackClient.GetPortByName(JAMULUS_INPUT_RIGHT)
-	jol := ac.JackClient.GetPortByName(JAMULUS_OUTPUT_LEFT)
-	jor := ac.JackClient.GetPortByName(JAMULUS_OUTPUT_RIGHT)
+	jil := ac.JackClient.GetPortByName(jamulusInputLeft)
+	jir := ac.JackClient.GetPortByName(jamulusInputRight)
+	jol := ac.JackClient.GetPortByName(jamulusOutputLeft)
+	jor := ac.JackClient.GetPortByName(jamulusOutputRight)
 	if jil == nil || jir == nil || jol == nil || jor == nil {
 		return
 	}
@@ -189,22 +185,22 @@ func (ac *AutoConnector) connectJamulusSuperCollider() {
 	// Connect Jamulus input left
 	serverPortName = ac.getServerPortName(leftChannelNum, false)
 	if ac.isValidPort(serverPortName) {
-		ac.connectPorts(serverPortName, JAMULUS_INPUT_LEFT)
+		ac.connectPorts(serverPortName, jamulusInputLeft)
 	}
 	// Connect Jamulus input right
 	serverPortName = ac.getServerPortName(rightChannelNum, false)
 	if ac.isValidPort(serverPortName) {
-		ac.connectPorts(serverPortName, JAMULUS_INPUT_RIGHT)
+		ac.connectPorts(serverPortName, jamulusInputRight)
 	}
 	// Connect Jamulus output left
 	serverPortName = ac.getServerPortName(leftChannelNum, true)
 	if ac.isValidPort(serverPortName) {
-		ac.connectPorts(JAMULUS_OUTPUT_LEFT, serverPortName)
+		ac.connectPorts(jamulusOutputLeft, serverPortName)
 	}
 	// Connect Jamulus output right
 	serverPortName = ac.getServerPortName(rightChannelNum, true)
 	if ac.isValidPort(serverPortName) {
-		ac.connectPorts(JAMULUS_OUTPUT_RIGHT, serverPortName)
+		ac.connectPorts(jamulusOutputRight, serverPortName)
 	}
 }
 
@@ -213,11 +209,76 @@ func (ac *AutoConnector) onShutdown() {
 	ac.ClientLock.Lock()
 	defer ac.ClientLock.Unlock()
 	ac.JackClient = nil
+	ac.JamulusChecked = false
 	// Wait for jackd to restart, then notify channel recipient to re-initialize client
-	time.Sleep(5*time.Second)
-	registrationChan <- jack.PortId(0)
+	time.Sleep(5 * time.Second)
+	ac.RegistrationChan <- jack.PortId(0)
 }
 
+func initClient(name string, portReg jack.PortRegistrationCallback, shutdown jack.ShutdownCallback, close bool) (*jack.Client, error) {
+	client, code := jack.ClientOpen(name, jack.NoStartServer)
+	if client == nil || code != 0 {
+		err := jack.StrError(code)
+		log.Error(err, "Failed to create client")
+		return nil, err
+	}
+	// Set port registration handler
+	if portReg != nil {
+		if code := client.SetPortRegistrationCallback(portReg); code != 0 {
+			err := jack.StrError(code)
+			log.Error(jack.StrError(code), "Failed to set port registration callback")
+			return nil, err
+		}
+	}
+	// Set shutdown handler
+	if shutdown != nil {
+		client.OnShutdown(shutdown)
+	}
+	if code := client.Activate(); code != 0 {
+		err := jack.StrError(code)
+		log.Error(err, "Failed to activate client")
+		return nil, err
+	}
+	// Automatically close client upon creation - used for connection checking
+	if close {
+		if code := client.Close(); code != 0 {
+			err := jack.StrError(code)
+			log.Error(err, "Failed to close client")
+			return nil, err
+		}
+		return nil, nil
+	}
+	return client, nil
+}
+
+// Helper function to connect JACK ports in a thread-safe manner
+func (ac *AutoConnector) connect(portID jack.PortId) error {
+	ac.ClientLock.Lock()
+	defer ac.ClientLock.Unlock()
+	if ac.JackClient == nil {
+		err := waitForDaemon()
+		if err != nil {
+			return err
+		}
+		client, err := initClient(ac.Name, ac.handlePortRegistration, ac.onShutdown, false)
+		if err != nil {
+			return err
+		}
+		ac.JackClient = client
+	}
+	port := ac.JackClient.GetPortById(portID)
+	match := ac.JTRegexp.MatchString(port.GetName())
+	if match {
+		ac.connectJackTripSuperCollider(port)
+	}
+	if !ac.JamulusChecked {
+		ac.connectJamulusSuperCollider()
+		ac.JamulusChecked = true
+	}
+	return nil
+}
+
+// TeardownClient closes the currently active JACK client
 func (ac *AutoConnector) TeardownClient() {
 	ac.ClientLock.Lock()
 	defer ac.ClientLock.Unlock()
@@ -225,86 +286,56 @@ func (ac *AutoConnector) TeardownClient() {
 		ac.JackClient.Close()
 	}
 	ac.JackClient = nil
+	ac.JamulusChecked = false
 	log.Info("Teardown of JACK client completed")
 }
 
+// SetupClient establishes a new client to watch for new JACK ports
 func (ac *AutoConnector) SetupClient() {
 	ac.ClientLock.Lock()
 	defer ac.ClientLock.Unlock()
-	waitForDaemon()
-	ac.JackClient = initClient(ac.Name, handlePortRegistration, ac.onShutdown)
+	err := waitForDaemon()
+	if err != nil {
+		panic(err)
+	}
+	client, err := initClient(ac.Name, ac.handlePortRegistration, ac.onShutdown, false)
+	if err != nil {
+		panic(err)
+	}
+	ac.JackClient = client
 	log.Info("Setup of JACK client completed", "name", ac.JackClient.GetName())
 }
 
-func initClient(name string, portReg jack.PortRegistrationCallback, shutdown jack.ShutdownCallback) *jack.Client {
-	client, code := jack.ClientOpen(name, jack.NoStartServer)
-	if client == nil || code != 0 {
-		log.Error(jack.StrError(code), "Failed to create client")
-		return nil
-	}
-	if portReg != nil {
-		if code := client.SetPortRegistrationCallback(portReg); code != 0 {
-			log.Error(jack.StrError(code), "Failed to set port registration callback")
-			return nil
-		}
-	}
-	if shutdown != nil {
-		client.OnShutdown(shutdown)
-	}
-	if code := client.Activate(); code != 0 {
-		log.Error(jack.StrError(code), "Failed to activate client")
-		return nil
-	}
-	return client
-}
-
-// Helper function to connect JACK ports in a thread-safe manner
-func (ac *AutoConnector) connect() {
-	ac.ClientLock.Lock()
-	defer ac.ClientLock.Unlock()
-	if ac.JackClient == nil {
-		waitForDaemon()
-		ac.JackClient = initClient(ac.Name, handlePortRegistration, ac.onShutdown)
-		log.Info("Setup of JACK client completed", "name", ac.JackClient.GetName())
-	}
-	ac.connectJackTripSuperCollider()
-	ac.connectJamulusSuperCollider()
-}
-
+// Run is the primary loop that is connects new JACK ports upon registration
 func (ac *AutoConnector) Run(wg *sync.WaitGroup) {
 	defer wg.Done()
 	for {
-		// The data sent on this channel is only used for notification purposes
-		_, ok := <-registrationChan
+		portID, ok := <-ac.RegistrationChan
 		if !ok {
 			log.Info("Registration channel is closed")
 			return
 		}
-		ac.connect()
+		err := RetryWithBackoff(func() error {
+			return ac.connect(portID)
+		})
+		if err != nil {
+			log.Error(err, "Failed to connect ports")
+		}
 	}
-}
-
-// extractClientInfo returns the name and channel number from a given JACK port
-func extractClientInfo(port, sep string) (string, int) {
-	data := strings.SplitN(port, sep, 2)
-	name := data[0]
-	channel, _ := strconv.Atoi(data[1])
-	return name, channel
 }
 
 // jack_wait reimplementation
-func waitForDaemon() {
-	for i := 0; i < 10; i++ {
+func waitForDaemon() error {
+	err := RetryWithBackoff(func() error {
+		// If we initiate the client too quickly, jackd freezes
 		time.Sleep(time.Second)
-		client := initClient("", nil, nil)
-		if client == nil {
-			continue
-		}
-		if code := client.Close(); code != 0 {
-			log.Error(jack.StrError(code), "Failed to close client")
-			continue
-		}
-		log.Info("Found running JACK daemon")
-		break
+		_, err := initClient("", nil, nil, true)
+		return err
+	})
+	if err != nil {
+		log.Error(err, "Unable to find JACK daemon")
+		return err
 	}
+	log.Info("Found running JACK daemon")
+	return nil
 }
