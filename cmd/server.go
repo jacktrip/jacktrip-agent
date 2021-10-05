@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"runtime"
 	"sync"
 	"time"
@@ -91,10 +92,24 @@ var lastConfig client.AgentConfig
 
 // runOnServer is used to run jacktrip-agent on an audio cloud server
 func runOnServer(apiOrigin string) {
-	// setup wait group for multiple routines
-	var wg sync.WaitGroup
+	// get server identifier
+	serverID := os.Getenv("JACKTRIP_SERVER_ID")
+	if serverID == "" {
+		err := errors.New("Empty server identifier")
+		log.Error(err, "unique identifier is required for server mode")
+		os.Exit(1)
+	}
+
+	// TODO: get server credentials
+	credentials := client.AgentCredentials{}
+
+	// CloudID may be empty if not on a managed cloud server
+	beat := client.ServerHeartbeat{CloudID: os.Getenv("JACKTRIP_CLOUD_ID")}
 
 	log.Info("Running jacktrip-agent in server mode")
+
+	// setup wait group for multiple routines
+	var wg sync.WaitGroup
 
 	// start HTTP server to respond to pings
 	router := mux.NewRouter()
@@ -105,11 +120,7 @@ func runOnServer(apiOrigin string) {
 	wg.Add(1)
 	go runHTTPServer(&wg, router, fmt.Sprintf("0.0.0.0:%s", HTTPServerPort))
 
-	// TODO: get server credentials
-	credentials := client.AgentCredentials{}
-
-	beat := client.ServerHeartbeat{CloudID: getCloudID()}
-
+	// start WebSocketManager
 	wsm := WebSocketManager{
 		ConfigChannel:    make(chan client.AgentConfig, 100),
 		HeartbeatChannel: make(chan interface{}, 100),
@@ -124,7 +135,7 @@ func runOnServer(apiOrigin string) {
 
 	// start ping server to send pings and update agent config
 	wg.Add(1)
-	go sendServerHeartbeats(&wg, &beat, &wsm)
+	go sendServerHeartbeats(&wg, &beat, &wsm, serverID)
 
 	// Start a config handler to update config changes
 	wg.Add(1)
@@ -152,13 +163,13 @@ func serverConfigUpdateHandler(wg *sync.WaitGroup, wsm *WebSocketManager) {
 }
 
 // sendServerHeartbeats sends heartbeat messages to api server and manages config updates
-func sendServerHeartbeats(wg *sync.WaitGroup, beat *client.ServerHeartbeat, wsm *WebSocketManager) {
+func sendServerHeartbeats(wg *sync.WaitGroup, beat *client.ServerHeartbeat, wsm *WebSocketManager, serverID string) {
 	defer wg.Done()
 
 	log.Info("Sending server heartbeats")
 
 	for {
-		err := wsm.InitConnection(wg, beat.CloudID)
+		err := wsm.InitConnection(wg, serverID)
 		if err != nil {
 			log.Error(err, "Failed to initiate websocket conncetion")
 			panic(err)
@@ -198,42 +209,6 @@ func handleServerUpdate(config client.AgentConfig) {
 	}
 
 	lastConfig = config
-}
-
-// getCloudID retrieves cloud instance id, via metadata service
-func getCloudID() string {
-	// send request to get instance-id from EC2 metadata
-	r, err := http.Get(EC2InstanceIDURL)
-	if err != nil || r.StatusCode != http.StatusOK {
-		// try again using Google Cloud metadata
-		client := &http.Client{}
-		req, _ := http.NewRequest("GET", GCloudInstanceIDURL, nil)
-		req.Header.Set("Metadata-Flavor", "Google")
-		r, err = client.Do(req)
-		if err != nil || r.StatusCode != http.StatusOK {
-			// try again using Azure metadata
-			req, _ = http.NewRequest("GET", AzureInstanceIDURL, nil)
-			req.Header.Set("Metadata", "true")
-			r, err = client.Do(req)
-			if err != nil || r.StatusCode != http.StatusOK {
-				log.Error(err, "Failed to retrieve instance-id from metadata service")
-				panic(err)
-			}
-		}
-	}
-	defer r.Body.Close()
-
-	// decode config from response
-	bodyBytes, err := ioutil.ReadAll(r.Body)
-	cloudID := string(bodyBytes)
-	if err != nil || cloudID == "" {
-		err = errors.New("failed to retrieve instance-id from metadata service")
-		log.Error(err, "Empty response")
-		panic(err)
-	}
-
-	log.Info("Retrieved instance-id", "id", cloudID)
-	return cloudID
 }
 
 // updateSuperColliderConfigs is used to update SuperCollider config files on managed audio servers
