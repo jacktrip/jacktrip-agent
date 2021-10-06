@@ -74,18 +74,6 @@ const (
 
 	// SuperColliderConfigTemplate is the template used to generate /tmp/default/supercollider file on audio servers
 	SuperColliderConfigTemplate = "SC_OPTS=-i %d -o %d -a %d -m %d -z %d -n 4096 -d 2048 -w 2048\n"
-
-	// EC2InstanceIDURL is url using EC2 metadata service that returns the instance-id
-	// See https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-metadata.html
-	EC2InstanceIDURL = "http://169.254.169.254/latest/meta-data/instance-id"
-
-	// GCloudInstanceIDURL is url using Google Cloud metadata service that returns the instance name
-	// See https://cloud.google.com/compute/docs/storing-retrieving-metadata
-	GCloudInstanceIDURL = "http://metadata.google.internal/computeMetadata/v1/instance/name"
-
-	// AzureInstanceIDURL is url using Azure metadata service that returns the instance name
-	// See https://docs.microsoft.com/en-us/azure/virtual-machines/linux/instance-metadata-service?tabs=linux
-	AzureInstanceIDURL = "http://169.254.169.254/metadata/instance/compute/name?api-version=2017-08-01&format=text"
 )
 
 var lastConfig client.AgentConfig
