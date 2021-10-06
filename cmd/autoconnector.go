@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jacktrip/jacktrip-agent/pkg/client"
 	"github.com/xthexder/go-jack"
 )
 
@@ -322,6 +323,64 @@ func (ac *AutoConnector) Run(wg *sync.WaitGroup) {
 			log.Error(err, "Failed to connect ports")
 		}
 	}
+}
+
+// CollectMetrics collects JACK + JackTrip metrics
+// TODO: Jamulus
+func (ac *AutoConnector) CollectMetrics() []client.ServerMetric {
+	metrics := []client.ServerMetric{{Name: "virtual_studio_up", Service: "jackd", Value: 0}}
+	jackClient, err := initClient("", nil, nil, false)
+	if err != nil {
+		return metrics
+	}
+	defer jackClient.Close()
+
+	// Update "virtual_studio_up" now that jackd is running
+	metrics[0].Value = 1
+
+	allPorts := client.ServerMetric{Name: "virtual_studio_connections", Service: "total", Value: 0}
+	systemPorts := client.ServerMetric{Name: "virtual_studio_connections", Service: "system", Value: 0}
+	scPorts := client.ServerMetric{Name: "virtual_studio_connections", Service: "supercollider", Value: 0}
+	jamulusPorts := client.ServerMetric{Name: "virtual_studio_connections", Service: "jamulus", Value: 0}
+	clientPorts := client.ServerMetric{Name: "virtual_studio_connections", Service: "clients_total", Value: 0}
+
+	ports := jackClient.GetPorts(".*", "", 0)
+	for _, port := range ports {
+		allPorts.Value += 1
+		if strings.HasPrefix(port, "system") {
+			systemPorts.Value += 1
+			continue
+		}
+		if strings.HasPrefix(port, "SuperCollider") || strings.HasPrefix(port, "supernova") {
+			scPorts.Value += 1
+			continue
+		}
+		if strings.HasPrefix(port, "Jamulus") {
+			jamulusPorts.Value += 1
+			continue
+		}
+		// Update known clients map
+		clientPorts.Value += 1
+		jackPort := jackClient.GetPortByName(port)
+		ac.getClientNum(jackPort.GetClientName())
+	}
+	metrics = append(metrics, allPorts)
+	metrics = append(metrics, systemPorts)
+	metrics = append(metrics, scPorts)
+	metrics = append(metrics, jamulusPorts)
+	metrics = append(metrics, clientPorts)
+
+	// Count the number of unique clients, removing Jamulus
+	uniqueClients := client.ServerMetric{Name: "virtual_studio_connections", Service: "clients_unique", Value: float64(len(ac.KnownClients) - 1)}
+	metrics = append(metrics, uniqueClients)
+	for key, _ := range ac.KnownClients {
+		if key == "Jamulus" {
+			continue
+		}
+		new := client.ServerMetric{Name: "virtual_studio_clients", ClientName: key, Value: 1}
+		metrics = append(metrics, new)
+	}
+	return metrics
 }
 
 // jack_wait reimplementation
