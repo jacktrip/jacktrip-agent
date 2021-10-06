@@ -195,8 +195,8 @@ func restartAllServices(config client.AgentConfig, isServer bool) {
 
 	// stop any managed services that are active
 	units, err := conn.ListUnitsByNames([]string{JackServiceName,
-		SCSynthServiceName, SupernovaServiceName, SCLangServiceName, JackAutoconnectServiceName,
-		JackTripServiceName, JamulusServiceName, JamulusServerServiceName, JamulusBridgeServiceName})
+		SCSynthServiceName, SupernovaServiceName, SCLangServiceName, JackTripServiceName,
+		JamulusServiceName, JamulusServerServiceName, JamulusBridgeServiceName})
 	if err != nil {
 		log.Error(err, "Failed to get status of managed services")
 		panic(err)
@@ -220,7 +220,7 @@ func restartAllServices(config client.AgentConfig, isServer bool) {
 	case client.JackTrip:
 		servicesToStart = []string{JackServiceName, JackTripServiceName}
 		if isServer {
-			servicesToStart = append(servicesToStart, SCSynthServiceName, SCLangServiceName, JackAutoconnectServiceName)
+			servicesToStart = append(servicesToStart, SCSynthServiceName, SCLangServiceName)
 		}
 	case client.Jamulus:
 		if isServer {
@@ -232,7 +232,7 @@ func restartAllServices(config client.AgentConfig, isServer bool) {
 		if isServer {
 			servicesToStart = []string{JackServiceName, JackTripServiceName}
 			servicesToStart = append(servicesToStart, JamulusServerServiceName, JamulusBridgeServiceName)
-			servicesToStart = append(servicesToStart, SCSynthServiceName, SCLangServiceName, JackAutoconnectServiceName)
+			servicesToStart = append(servicesToStart, SCSynthServiceName, SCLangServiceName)
 		} else {
 			switch config.Quality {
 			case 0:

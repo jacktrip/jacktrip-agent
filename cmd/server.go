@@ -44,9 +44,6 @@ const (
 	// SCLangServiceName is the name of the systemd service for the SuperCollider language runtime
 	SCLangServiceName = "sclang.service"
 
-	// JackAutoconnectServiceName is the name of the systemd service for connecting jack clients
-	JackAutoconnectServiceName = "jack-autoconnect.service"
-
 	// JamulusServerServiceName is the name of the systemd service for the Jamulus server
 	JamulusServerServiceName = "jamulus-server.service"
 
@@ -88,6 +85,7 @@ const (
 )
 
 var lastConfig client.AgentConfig
+var ac *AutoConnector
 
 // runOnServer is used to run jacktrip-agent on an audio cloud server
 func runOnServer(apiOrigin string) {
@@ -129,6 +127,11 @@ func runOnServer(apiOrigin string) {
 	// Start a config handler to update config changes
 	wg.Add(1)
 	go serverConfigUpdateHandler(&wg, &wsm)
+
+	// Start JACK autoconnector
+	ac = NewAutoConnector()
+	wg.Add(1)
+	go ac.Run(&wg)
 
 	// wait for everything to complete
 	wg.Wait()
@@ -194,7 +197,13 @@ func handleServerUpdate(config client.AgentConfig) {
 		updateServiceConfigs(config, "", true)
 
 		// shutdown or restart managed services
+		ac.TeardownClient()
 		restartAllServices(config, true)
+		// jack client will error when the server is only using Jamulus
+		if config.Type != client.Jamulus {
+			// this sleep was necessary otherwise ports aren't found?
+			ac.SetupClient()
+		}
 	}
 
 	lastConfig = config
