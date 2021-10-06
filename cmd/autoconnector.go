@@ -50,7 +50,7 @@ type AutoConnector struct {
 	JTRegexp         *regexp.Regexp
 	JackClient       *jack.Client
 	ClientLock       sync.Mutex
-	JamulusChecked   bool
+	FullScanDone     bool
 	KnownClients     map[string]int
 	RegistrationChan chan jack.PortId
 }
@@ -61,7 +61,7 @@ func NewAutoConnector() *AutoConnector {
 		Name:             "autoconnector",
 		Channels:         defaultChannels,
 		JTRegexp:         regexp.MustCompile(jacktripPortToken),
-		JamulusChecked:   false,
+		FullScanDone:     false,
 		KnownClients:     map[string]int{"Jamulus": 0},
 		RegistrationChan: make(chan jack.PortId, 200),
 	}
@@ -145,8 +145,8 @@ func (ac *AutoConnector) connectPorts(src, dest string) {
 	}
 }
 
-// connectJackTripSuperCollider establishes JackTrip<->SuperCollider audio connections
-func (ac *AutoConnector) connectJackTripSuperCollider(port *jack.Port) {
+// connectSingleJackTripSCPort establishes individual JackTrip<->SuperCollider audio connections
+func (ac *AutoConnector) connectSingleJackTripSCPort(port *jack.Port) {
 	clientName := port.GetClientName()
 	suffix := port.GetShortName()
 	data := strings.SplitN(suffix, "_", 2)
@@ -166,7 +166,20 @@ func (ac *AutoConnector) connectJackTripSuperCollider(port *jack.Port) {
 	}
 }
 
-// connectJamulusSuperCollider establishes Jamulus<->SuperCollider audio connections
+// connectAllJackTripSCPorts establishes all JackTrip<->SuperCollider audio connections (used during initiation)
+func (ac *AutoConnector) connectAllJackTripSCPorts() {
+	// Iterate over all output + input ports that match JackTrip pattern
+	flags := []uint64{jack.PortIsOutput, jack.PortIsInput}
+	for _, flag := range flags {
+		ports := ac.JackClient.GetPorts(jacktripPortToken, "", flag)
+		for _, port := range ports {
+			jackPort := ac.JackClient.GetPortByName(port)
+			ac.connectSingleJackTripSCPort(jackPort)
+		}
+	}
+}
+
+// connectJamulusSuperCollider establishes all Jamulus<->SuperCollider audio connections (used during initiation)
 func (ac *AutoConnector) connectJamulusSuperCollider() {
 	// Return early if Jamulus ports are not active
 	jil := ac.JackClient.GetPortByName(jamulusInputLeft)
@@ -209,7 +222,7 @@ func (ac *AutoConnector) onShutdown() {
 	ac.ClientLock.Lock()
 	defer ac.ClientLock.Unlock()
 	ac.JackClient = nil
-	ac.JamulusChecked = false
+	ac.FullScanDone = false
 	// Wait for jackd to restart, then notify channel recipient to re-initialize client
 	time.Sleep(5 * time.Second)
 	ac.RegistrationChan <- jack.PortId(0)
@@ -269,11 +282,12 @@ func (ac *AutoConnector) connect(portID jack.PortId) error {
 	port := ac.JackClient.GetPortById(portID)
 	match := ac.JTRegexp.MatchString(port.GetName())
 	if match {
-		ac.connectJackTripSuperCollider(port)
+		ac.connectSingleJackTripSCPort(port)
 	}
-	if !ac.JamulusChecked {
+	if !ac.FullScanDone {
+		ac.connectAllJackTripSCPorts()
 		ac.connectJamulusSuperCollider()
-		ac.JamulusChecked = true
+		ac.FullScanDone = true
 	}
 	return nil
 }
@@ -286,7 +300,7 @@ func (ac *AutoConnector) TeardownClient() {
 		ac.JackClient.Close()
 	}
 	ac.JackClient = nil
-	ac.JamulusChecked = false
+	ac.FullScanDone = false
 	log.Info("Teardown of JACK client completed")
 }
 

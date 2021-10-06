@@ -42,7 +42,7 @@ func TestNewAutoConnector(t *testing.T) {
 	assert.Equal("*main.AutoConnector", fmt.Sprintf("%T", ac))
 	assert.Equal("autoconnector", ac.Name)
 	assert.Equal(2, ac.Channels)
-	assert.Equal(false, ac.JamulusChecked)
+	assert.Equal(false, ac.FullScanDone)
 	assert.Equal(1, len(ac.KnownClients))
 	assert.Equal(0, ac.KnownClients["Jamulus"])
 }
@@ -95,8 +95,8 @@ func TestGetServerChannel(t *testing.T) {
 func TestOnShutdown(t *testing.T) {
 	assert := assert.New(t)
 	ac := NewAutoConnector()
-	// onShutdown should revert the JamulusChecked boolean
-	ac.JamulusChecked = true
+	// onShutdown should revert the FullScanDone boolean
+	ac.FullScanDone = true
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -104,7 +104,7 @@ func TestOnShutdown(t *testing.T) {
 		wg.Done()
 	}()
 	wg.Wait()
-	assert.False(ac.JamulusChecked)
+	assert.False(ac.FullScanDone)
 	assert.Nil(ac.JackClient)
 	x := <-ac.RegistrationChan
 	assert.Equal(jack.PortId(0), x)
@@ -113,9 +113,9 @@ func TestOnShutdown(t *testing.T) {
 func TestTeardownClient(t *testing.T) {
 	assert := assert.New(t)
 	ac := NewAutoConnector()
-	// onShutdown should revert the JamulusChecked boolean
-	ac.JamulusChecked = true
+	// onShutdown should revert the FullScanDone boolean
+	ac.FullScanDone = true
 	ac.TeardownClient()
-	assert.False(ac.JamulusChecked)
+	assert.False(ac.FullScanDone)
 	assert.Nil(ac.JackClient)
 }
