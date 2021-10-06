@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
+	"os"
 	"time"
 
 	"github.com/jacktrip/jacktrip-agent/pkg/client"
@@ -37,11 +38,16 @@ func init() {
 // getCredentials retrieves jacktrip agent credentials from system config file.
 // If config does not exist, it will generate and save new credentials to config file.
 func getCredentials() client.AgentCredentials {
+	var rawBytes []byte
+	var err error
 
-	rawBytes, err := ioutil.ReadFile(fmt.Sprintf("%s/credentials", AgentConfigDir))
-	if err != nil {
-		log.Error(err, "Failed to read credentials")
-		panic(err)
+	rawBytes = []byte(os.Getenv("JACKTRIP_API_SECRET"))
+	if len(rawBytes) == 0 {
+		rawBytes, err = ioutil.ReadFile(fmt.Sprintf("%s/credentials", AgentConfigDir))
+		if err != nil {
+			log.Error(err, "Failed to read credentials")
+			panic(err)
+		}
 	}
 
 	splits := bytes.Split(bytes.TrimSpace(rawBytes), []byte("."))

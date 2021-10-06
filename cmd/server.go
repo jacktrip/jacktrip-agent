@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"runtime"
 	"sync"
 	"time"
@@ -70,18 +71,6 @@ const (
 
 	// SuperColliderConfigTemplate is the template used to generate /tmp/default/supercollider file on audio servers
 	SuperColliderConfigTemplate = "SC_OPTS=-i %d -o %d -a %d -m %d -z %d -n 4096 -d 2048 -w 2048\n"
-
-	// EC2InstanceIDURL is url using EC2 metadata service that returns the instance-id
-	// See https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-metadata.html
-	EC2InstanceIDURL = "http://169.254.169.254/latest/meta-data/instance-id"
-
-	// GCloudInstanceIDURL is url using Google Cloud metadata service that returns the instance name
-	// See https://cloud.google.com/compute/docs/storing-retrieving-metadata
-	GCloudInstanceIDURL = "http://metadata.google.internal/computeMetadata/v1/instance/name"
-
-	// AzureInstanceIDURL is url using Azure metadata service that returns the instance name
-	// See https://docs.microsoft.com/en-us/azure/virtual-machines/linux/instance-metadata-service?tabs=linux
-	AzureInstanceIDURL = "http://169.254.169.254/metadata/instance/compute/name?api-version=2017-08-01&format=text"
 )
 
 var lastConfig client.AgentConfig
@@ -89,10 +78,24 @@ var ac *AutoConnector
 
 // runOnServer is used to run jacktrip-agent on an audio cloud server
 func runOnServer(apiOrigin string) {
-	// setup wait group for multiple routines
-	var wg sync.WaitGroup
+	// get server identifier
+	serverID := os.Getenv("JACKTRIP_SERVER_ID")
+	if serverID == "" {
+		err := errors.New("Empty server identifier")
+		log.Error(err, "unique identifier is required for server mode")
+		os.Exit(1)
+	}
+
+	// TODO: get server credentials
+	credentials := client.AgentCredentials{}
+
+	// CloudID may be empty if not on a managed cloud server
+	beat := client.ServerHeartbeat{CloudID: os.Getenv("JACKTRIP_CLOUD_ID")}
 
 	log.Info("Running jacktrip-agent in server mode")
+
+	// setup wait group for multiple routines
+	var wg sync.WaitGroup
 
 	// start HTTP server to respond to pings
 	router := mux.NewRouter()
@@ -103,11 +106,7 @@ func runOnServer(apiOrigin string) {
 	wg.Add(1)
 	go runHTTPServer(&wg, router, fmt.Sprintf("0.0.0.0:%s", HTTPServerPort))
 
-	// TODO: get server credentials
-	credentials := client.AgentCredentials{}
-
-	beat := client.ServerHeartbeat{CloudID: getCloudID()}
-
+	// start WebSocketManager
 	wsm := WebSocketManager{
 		ConfigChannel:    make(chan client.AgentConfig, 100),
 		HeartbeatChannel: make(chan interface{}, 100),
@@ -122,7 +121,7 @@ func runOnServer(apiOrigin string) {
 
 	// start ping server to send pings and update agent config
 	wg.Add(1)
-	go sendServerHeartbeats(&wg, &beat, &wsm)
+	go sendServerHeartbeats(&wg, &beat, &wsm, serverID)
 
 	// Start a config handler to update config changes
 	wg.Add(1)
@@ -155,13 +154,13 @@ func serverConfigUpdateHandler(wg *sync.WaitGroup, wsm *WebSocketManager) {
 }
 
 // sendServerHeartbeats sends heartbeat messages to api server and manages config updates
-func sendServerHeartbeats(wg *sync.WaitGroup, beat *client.ServerHeartbeat, wsm *WebSocketManager) {
+func sendServerHeartbeats(wg *sync.WaitGroup, beat *client.ServerHeartbeat, wsm *WebSocketManager, serverID string) {
 	defer wg.Done()
 
 	log.Info("Sending server heartbeats")
 
 	for {
-		err := wsm.InitConnection(wg, beat.CloudID)
+		err := wsm.InitConnection(wg, serverID)
 		if err != nil {
 			log.Error(err, "Failed to initiate websocket conncetion")
 			panic(err)
@@ -207,42 +206,6 @@ func handleServerUpdate(config client.AgentConfig) {
 	}
 
 	lastConfig = config
-}
-
-// getCloudID retrieves cloud instance id, via metadata service
-func getCloudID() string {
-	// send request to get instance-id from EC2 metadata
-	r, err := http.Get(EC2InstanceIDURL)
-	if err != nil || r.StatusCode != http.StatusOK {
-		// try again using Google Cloud metadata
-		client := &http.Client{}
-		req, _ := http.NewRequest("GET", GCloudInstanceIDURL, nil)
-		req.Header.Set("Metadata-Flavor", "Google")
-		r, err = client.Do(req)
-		if err != nil || r.StatusCode != http.StatusOK {
-			// try again using Azure metadata
-			req, _ = http.NewRequest("GET", AzureInstanceIDURL, nil)
-			req.Header.Set("Metadata", "true")
-			r, err = client.Do(req)
-			if err != nil || r.StatusCode != http.StatusOK {
-				log.Error(err, "Failed to retrieve instance-id from metadata service")
-				panic(err)
-			}
-		}
-	}
-	defer r.Body.Close()
-
-	// decode config from response
-	bodyBytes, err := ioutil.ReadAll(r.Body)
-	cloudID := string(bodyBytes)
-	if err != nil || cloudID == "" {
-		err = errors.New("failed to retrieve instance-id from metadata service")
-		log.Error(err, "Empty response")
-		panic(err)
-	}
-
-	log.Info("Retrieved instance-id", "id", cloudID)
-	return cloudID
 }
 
 // updateSuperColliderConfigs is used to update SuperCollider config files on managed audio servers
