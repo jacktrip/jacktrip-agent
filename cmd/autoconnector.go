@@ -360,21 +360,21 @@ func (ac *AutoConnector) CollectMetrics() []client.ServerMetric {
 
 	ports := jackClient.GetPorts(".*", "", 0)
 	for _, port := range ports {
-		allPorts.Value += 1
+		allPorts.Value++
 		if strings.HasPrefix(port, "system") {
-			systemPorts.Value += 1
+			systemPorts.Value++
 			continue
 		}
 		if strings.HasPrefix(port, "SuperCollider") || strings.HasPrefix(port, "supernova") {
-			scPorts.Value += 1
+			scPorts.Value++
 			continue
 		}
 		if strings.HasPrefix(port, "Jamulus") {
-			jamulusPorts.Value += 1
+			jamulusPorts.Value++
 			continue
 		}
 		// Update known clients map
-		clientPorts.Value += 1
+		clientPorts.Value++
 		jackPort := jackClient.GetPortByName(port)
 		ac.getClientNum(jackPort.GetClientName())
 	}
@@ -387,7 +387,7 @@ func (ac *AutoConnector) CollectMetrics() []client.ServerMetric {
 	// Count the number of unique clients, removing Jamulus
 	uniqueClients := client.ServerMetric{Name: "virtual_studio_connections", Service: "clients_unique", Value: float64(len(ac.KnownClients) - 1)}
 	metrics = append(metrics, uniqueClients)
-	for key, _ := range ac.KnownClients {
+	for key := range ac.KnownClients {
 		if key == "Jamulus" {
 			continue
 		}

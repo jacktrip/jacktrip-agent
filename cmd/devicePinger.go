@@ -77,7 +77,6 @@ func MeasurePingStats(beat *client.DeviceHeartbeat, apiOrigin string, host strin
 	}
 	updateWSPing(beat, socketRtts)
 	log.V(1).Info("Updated device heartbeat with websocket ping result")
-	return
 }
 
 // updatePing function takes icmpStats object and update ping statistics
