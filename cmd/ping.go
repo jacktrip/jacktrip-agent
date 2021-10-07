@@ -56,7 +56,7 @@ func sendHTTPHeartbeat(beat interface{}, credentials client.AgentCredentials, ap
 
 	// check response status
 	if r.StatusCode != http.StatusOK {
-		return config, fmt.Errorf("Bad response from agent heartbeat: Status=%d", r.StatusCode)
+		return config, fmt.Errorf("bad response from agent heartbeat: Status=%d", r.StatusCode)
 	}
 
 	// decode config from response

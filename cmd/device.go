@@ -151,7 +151,7 @@ func deviceConfigUpdateHandler(wg *sync.WaitGroup, beat *client.DeviceHeartbeat,
 			log.Info("Config updated", "value", newDeviceConfig)
 
 			// Check if the new config indicates a disconnect from an audio server. If yes, kill the existing socket as well.
-			if wsm.IsInitialized && (newDeviceConfig.Enabled == false || newDeviceConfig.Host == "") {
+			if wsm.IsInitialized && (!bool(newDeviceConfig.Enabled) || newDeviceConfig.Host == "") {
 				wsm.CloseConnection()
 			}
 			handleDeviceUpdate(beat, wsm.Credentials, newDeviceConfig)
@@ -166,7 +166,7 @@ func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm 
 	firstHeartbeat := true
 
 	for {
-		if currentDeviceConfig.Enabled == true && currentDeviceConfig.Host != "" {
+		if currentDeviceConfig.Enabled && currentDeviceConfig.Host != "" {
 			// device is connected to an audio server
 
 			// Measure connection latency to the audio server

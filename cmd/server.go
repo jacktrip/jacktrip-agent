@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"strconv"
 	"sync"
 	"time"
 
@@ -81,7 +82,7 @@ func runOnServer(apiOrigin string) {
 	// get server identifier
 	serverID := os.Getenv("JACKTRIP_SERVER_ID")
 	if serverID == "" {
-		err := errors.New("Empty server identifier")
+		err := errors.New("empty server identifier")
 		log.Error(err, "unique identifier is required for server mode")
 		os.Exit(1)
 	}
@@ -211,7 +212,19 @@ func handleServerUpdate(config client.AgentConfig) {
 // updateSuperColliderConfigs is used to update SuperCollider config files on managed audio servers
 func updateSuperColliderConfigs(config client.AgentConfig) {
 	// write SuperCollider (server) config file
+
+	// calculate maxClients and other variables
 	maxClients := runtime.NumCPU() * MaxClientsPerProcessor
+	maxClientsEnv := os.Getenv("JACKTRIP_MAX_CLIENTS")
+	if maxClientsEnv != "" {
+		c, err := strconv.Atoi(maxClientsEnv)
+		if err == nil {
+			maxClients = c
+			if maxClients < MaxClientsPerProcessor {
+				maxClients = MaxClientsPerProcessor
+			}
+		}
+	}
 	numInputChannels := maxClients * 2
 	numOutputChannels := maxClients * 2
 	audioBusses := (numInputChannels + numOutputChannels) * 2
