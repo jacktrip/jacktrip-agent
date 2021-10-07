@@ -51,7 +51,6 @@ type AutoConnector struct {
 	JTRegexp         *regexp.Regexp
 	JackClient       *jack.Client
 	ClientLock       sync.Mutex
-	FullScanDone     bool
 	KnownClients     map[string]int
 	RegistrationChan chan jack.PortId
 }
@@ -62,7 +61,6 @@ func NewAutoConnector() *AutoConnector {
 		Name:             "autoconnector",
 		Channels:         defaultChannels,
 		JTRegexp:         regexp.MustCompile(jacktripPortToken),
-		FullScanDone:     false,
 		KnownClients:     map[string]int{"Jamulus": 0},
 		RegistrationChan: make(chan jack.PortId, 200),
 	}
@@ -223,7 +221,6 @@ func (ac *AutoConnector) onShutdown() {
 	ac.ClientLock.Lock()
 	defer ac.ClientLock.Unlock()
 	ac.JackClient = nil
-	ac.FullScanDone = false
 	// Wait for jackd to restart, then notify channel recipient to re-initialize client
 	time.Sleep(5 * time.Second)
 	ac.RegistrationChan <- jack.PortId(0)
@@ -279,16 +276,14 @@ func (ac *AutoConnector) connect(portID jack.PortId) error {
 			return err
 		}
 		ac.JackClient = client
+		// Trigger a full-scan on initiation
+		ac.connectAllJackTripSCPorts()
+		ac.connectJamulusSuperCollider()
 	}
 	port := ac.JackClient.GetPortById(portID)
 	match := ac.JTRegexp.MatchString(port.GetName())
 	if match {
 		ac.connectSingleJackTripSCPort(port)
-	}
-	if !ac.FullScanDone {
-		ac.connectAllJackTripSCPorts()
-		ac.connectJamulusSuperCollider()
-		ac.FullScanDone = true
 	}
 	return nil
 }
@@ -301,7 +296,6 @@ func (ac *AutoConnector) TeardownClient() {
 		ac.JackClient.Close()
 	}
 	ac.JackClient = nil
-	ac.FullScanDone = false
 	log.Info("Teardown of JACK client completed")
 }
 
@@ -318,6 +312,9 @@ func (ac *AutoConnector) SetupClient() {
 		panic(err)
 	}
 	ac.JackClient = client
+	// Trigger a full-scan on initiation
+	ac.connectAllJackTripSCPorts()
+	ac.connectJamulusSuperCollider()
 	log.Info("Setup of JACK client completed", "name", ac.JackClient.GetName())
 }
 
@@ -400,8 +397,6 @@ func (ac *AutoConnector) CollectMetrics() []client.ServerMetric {
 // jack_wait reimplementation
 func waitForDaemon() error {
 	err := RetryWithBackoff(func() error {
-		// If we initiate the client too quickly, jackd freezes
-		time.Sleep(time.Second)
 		_, err := initClient("", nil, nil, true)
 		return err
 	})

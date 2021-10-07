@@ -20,11 +20,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 
 	"github.com/coreos/go-systemd/v22/dbus"
-
 	"github.com/jacktrip/jacktrip-agent/pkg/client"
 )
 
@@ -216,11 +216,13 @@ func restartAllServices(config client.AgentConfig, isServer bool) {
 
 	// determine which services to start
 	var servicesToStart []string
+	SCSynthRestarted := false
 	switch config.Type {
 	case client.JackTrip:
 		servicesToStart = []string{JackServiceName, JackTripServiceName}
 		if isServer {
 			servicesToStart = append(servicesToStart, SCSynthServiceName, SCLangServiceName)
+			SCSynthRestarted = true
 		}
 	case client.Jamulus:
 		if isServer {
@@ -233,6 +235,7 @@ func restartAllServices(config client.AgentConfig, isServer bool) {
 			servicesToStart = []string{JackServiceName, JackTripServiceName}
 			servicesToStart = append(servicesToStart, JamulusServerServiceName, JamulusBridgeServiceName)
 			servicesToStart = append(servicesToStart, SCSynthServiceName, SCLangServiceName)
+			SCSynthRestarted = true
 		} else {
 			switch config.Quality {
 			case 0:
@@ -251,6 +254,20 @@ func restartAllServices(config client.AgentConfig, isServer bool) {
 		if err != nil {
 			log.Error(err, "Unable to start service", "name", serviceName)
 			panic(err)
+		}
+	}
+
+	// if SuperCollider was restarted, wait for it to be running
+	if SCSynthRestarted {
+		log.Info("Waiting for scsynth to be running")
+		if _, err := os.Stat(PathToSuperColliderLivenessFile); !os.IsNotExist(err) {
+			cmd := exec.Command("sclang", PathToSuperColliderLivenessFile)
+			err := cmd.Run()
+			if err != nil {
+				log.Error(err, "Failed to wait for scsynth to be running")
+				panic(err)
+			}
+			log.Info("Successfully detected running scsynth")
 		}
 	}
 }
