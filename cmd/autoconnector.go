@@ -133,21 +133,24 @@ func (ac *AutoConnector) isConnected(src, dest string) bool {
 }
 
 // connectPorts establishes a directed connection between two JACK ports
-func (ac *AutoConnector) connectPorts(src, dest string) {
+func (ac *AutoConnector) connectPorts(src, dest string) error {
 	if ac.isConnected(src, dest) {
-		return
+		return nil
 	}
 	code := ac.JackClient.Connect(src, dest)
 	switch code {
 	case 0:
 		log.Info("Connected JACK ports", "src", src, "dest", dest)
 	default:
-		log.Error(jack.StrError(code), "Unexpected error connecting JACK ports")
+		err := jack.StrError(code)
+		log.Error(err, "Unexpected error connecting JACK ports")
+		return err
 	}
+	return nil
 }
 
 // connectSingleJackTripSCPort establishes individual JackTrip<->SuperCollider audio connections
-func (ac *AutoConnector) connectSingleJackTripSCPort(port *jack.Port) {
+func (ac *AutoConnector) connectSingleJackTripSCPort(port *jack.Port) error {
 	clientName := port.GetClientName()
 	suffix := port.GetShortName()
 	data := strings.SplitN(suffix, "_", 2)
@@ -160,35 +163,46 @@ func (ac *AutoConnector) connectSingleJackTripSCPort(port *jack.Port) {
 	serverPortName := ac.getServerPortName(serverChannel, isInput)
 	if ac.isValidPort(serverPortName) {
 		if isInput {
-			ac.connectPorts(port.GetName(), serverPortName)
+			err := ac.connectPorts(port.GetName(), serverPortName)
+			if err != nil {
+				return err
+			}
 		} else {
-			ac.connectPorts(serverPortName, port.GetName())
+			err := ac.connectPorts(serverPortName, port.GetName())
+			if err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }
 
 // connectAllJackTripSCPorts establishes all JackTrip<->SuperCollider audio connections (used during initiation)
-func (ac *AutoConnector) connectAllJackTripSCPorts() {
+func (ac *AutoConnector) connectAllJackTripSCPorts() error {
 	// Iterate over all output + input ports that match JackTrip pattern
 	flags := []uint64{jack.PortIsOutput, jack.PortIsInput}
 	for _, flag := range flags {
 		ports := ac.JackClient.GetPorts(jacktripPortToken, "", flag)
 		for _, port := range ports {
 			jackPort := ac.JackClient.GetPortByName(port)
-			ac.connectSingleJackTripSCPort(jackPort)
+			err := ac.connectSingleJackTripSCPort(jackPort)
+			if err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }
 
 // connectJamulusSuperCollider establishes all Jamulus<->SuperCollider audio connections (used during initiation)
-func (ac *AutoConnector) connectJamulusSuperCollider() {
+func (ac *AutoConnector) connectJamulusSuperCollider() error {
 	// Return early if Jamulus ports are not active
 	jil := ac.JackClient.GetPortByName(jamulusInputLeft)
 	jir := ac.JackClient.GetPortByName(jamulusInputRight)
 	jol := ac.JackClient.GetPortByName(jamulusOutputLeft)
 	jor := ac.JackClient.GetPortByName(jamulusOutputRight)
 	if jil == nil || jir == nil || jol == nil || jor == nil {
-		return
+		return nil
 	}
 
 	clientNum := ac.getClientNum("Jamulus")
@@ -199,23 +213,32 @@ func (ac *AutoConnector) connectJamulusSuperCollider() {
 	// Connect Jamulus input left
 	serverPortName = ac.getServerPortName(leftChannelNum, false)
 	if ac.isValidPort(serverPortName) {
-		ac.connectPorts(serverPortName, jamulusInputLeft)
+		if err := ac.connectPorts(serverPortName, jamulusInputLeft); err != nil {
+			return err
+		}
 	}
 	// Connect Jamulus input right
 	serverPortName = ac.getServerPortName(rightChannelNum, false)
 	if ac.isValidPort(serverPortName) {
-		ac.connectPorts(serverPortName, jamulusInputRight)
+		if err := ac.connectPorts(serverPortName, jamulusInputRight); err != nil {
+			return err
+		}
 	}
 	// Connect Jamulus output left
 	serverPortName = ac.getServerPortName(leftChannelNum, true)
 	if ac.isValidPort(serverPortName) {
-		ac.connectPorts(jamulusOutputLeft, serverPortName)
+		if err := ac.connectPorts(jamulusOutputLeft, serverPortName); err != nil {
+			return err
+		}
 	}
 	// Connect Jamulus output right
 	serverPortName = ac.getServerPortName(rightChannelNum, true)
 	if ac.isValidPort(serverPortName) {
-		ac.connectPorts(jamulusOutputRight, serverPortName)
+		if err := ac.connectPorts(jamulusOutputRight, serverPortName); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // onShutdown only runs when upon unexpected connection error
@@ -283,12 +306,17 @@ func (ac *AutoConnector) connect(portID jack.PortId) error {
 	port := ac.JackClient.GetPortById(portID)
 	match := ac.JTRegexp.MatchString(port.GetName())
 	if match {
-		ac.connectSingleJackTripSCPort(port)
+		if err := ac.connectSingleJackTripSCPort(port); err != nil {
+			return err
+		}
 	}
 	if !ac.FullScanDone {
-		ac.connectAllJackTripSCPorts()
-		ac.connectJamulusSuperCollider()
-		ac.FullScanDone = true
+		if err := ac.connectAllJackTripSCPorts(); err != nil {
+			return err
+		}
+		if err := ac.connectJamulusSuperCollider(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
