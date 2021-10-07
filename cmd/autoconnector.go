@@ -279,11 +279,12 @@ func (ac *AutoConnector) connect(portID jack.PortId) error {
 		// Trigger a full-scan on initiation
 		ac.connectAllJackTripSCPorts()
 		ac.connectJamulusSuperCollider()
-	}
-	port := ac.JackClient.GetPortById(portID)
-	match := ac.JTRegexp.MatchString(port.GetName())
-	if match {
-		ac.connectSingleJackTripSCPort(port)
+	} else {
+		port := ac.JackClient.GetPortById(portID)
+		match := ac.JTRegexp.MatchString(port.GetName())
+		if match {
+			ac.connectSingleJackTripSCPort(port)
+		}
 	}
 	return nil
 }
