@@ -16,10 +16,11 @@ package main
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
-	"github.com/xthexder/go-jack"
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/xthexder/go-jack"
 )
 
 func TestConsts(t *testing.T) {
@@ -42,7 +43,6 @@ func TestNewAutoConnector(t *testing.T) {
 	assert.Equal("*main.AutoConnector", fmt.Sprintf("%T", ac))
 	assert.Equal("autoconnector", ac.Name)
 	assert.Equal(2, ac.Channels)
-	assert.Equal(false, ac.FullScanDone)
 	assert.Equal(1, len(ac.KnownClients))
 	assert.Equal(0, ac.KnownClients["Jamulus"])
 }
@@ -96,7 +96,7 @@ func TestOnShutdown(t *testing.T) {
 	assert := assert.New(t)
 	ac := NewAutoConnector()
 	// onShutdown should revert the FullScanDone boolean
-	ac.FullScanDone = true
+	ac.JackClient = &jack.Client{}
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -104,7 +104,6 @@ func TestOnShutdown(t *testing.T) {
 		wg.Done()
 	}()
 	wg.Wait()
-	assert.False(ac.FullScanDone)
 	assert.Nil(ac.JackClient)
 	x := <-ac.RegistrationChan
 	assert.Equal(jack.PortId(0), x)
@@ -113,9 +112,8 @@ func TestOnShutdown(t *testing.T) {
 func TestTeardownClient(t *testing.T) {
 	assert := assert.New(t)
 	ac := NewAutoConnector()
-	// onShutdown should revert the FullScanDone boolean
-	ac.FullScanDone = true
+	// onShutdown should nullify the active JackClient
+	ac.JackClient = &jack.Client{}
 	ac.TeardownClient()
-	assert.False(ac.FullScanDone)
 	assert.Nil(ac.JackClient)
 }

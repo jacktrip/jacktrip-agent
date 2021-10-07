@@ -58,6 +58,9 @@ const (
 	// PathToSuperColliderConfig is the path to SuperCollider service config file
 	PathToSuperColliderConfig = "/tmp/default/supercollider"
 
+	// PathToSuperColliderLivenessFile is the path to SuperCollider liveness file
+	PathToSuperColliderLivenessFile = "/tmp/sc-liveness.scd"
+
 	// PathToSuperColliderStartupFile is the path to SuperCollider startup file
 	PathToSuperColliderStartupFile = "/tmp/jacktrip.scd"
 
@@ -201,7 +204,6 @@ func handleServerUpdate(config client.AgentConfig) {
 		restartAllServices(config, true)
 		// jack client will error when the server is only using Jamulus
 		if config.Type != client.Jamulus {
-			// this sleep was necessary otherwise ports aren't found?
 			ac.SetupClient()
 		}
 	}
@@ -257,6 +259,25 @@ func updateSuperColliderConfigs(config client.AgentConfig) {
 	err = ioutil.WriteFile(PathToSCLangConfig, []byte(sclangConfig), 0644)
 	if err != nil {
 		log.Error(err, "Failed to save sclang config", "path", PathToSCLangConfig)
+	}
+
+	// write SuperCollider liveness file
+	scLiveness := `(
+fork {
+		var cond, runResponder;
+		Server.default = s = Server.remote(\remote, NetAddr("127.0.0.1", 57110));
+		cond = Condition({ s.serverRunning });
+		// 'signal' will allow the forked routine to advance
+		// only when 'serverRunning' finally becomes true
+		runResponder = SimpleController(s).put(\serverRunning, { cond.signal });
+		cond.wait;
+		runResponder.remove;
+		exit(0);
+};
+)`
+	err = ioutil.WriteFile(PathToSuperColliderLivenessFile, []byte(scLiveness), 0644)
+	if err != nil {
+		log.Error(err, "Failed to save SuperCollider liveness file", "path", PathToSuperColliderLivenessFile)
 	}
 
 	// write SuperCollider startup file
