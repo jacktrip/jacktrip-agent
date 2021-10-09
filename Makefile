@@ -16,6 +16,9 @@
 
 all: lint fmt agent-amd64 agent-arm
 
+local:
+	@go build -o jacktrip-agent ./cmd
+
 agent-amd64:
 	@docker buildx build --platform linux/amd64 --target=artifact --output type=local,dest=./ .
 
