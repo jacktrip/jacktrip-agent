@@ -15,6 +15,8 @@
 package client
 
 import (
+	"encoding/json"
+
 	"github.com/jmoiron/sqlx/types"
 )
 
@@ -78,9 +80,15 @@ type ServerMetric struct {
 	// Metric value
 	Value float64 `json:"value"`
 
-	// Service tag for filtering/grouping
-	Service string `json:"service,omitempty"`
-
 	// Client name tag for filtering/grouping
 	ClientName string `json:"clientName,omitempty"`
+}
+
+func (m *ServerMetric) MarshalJSON() ([]byte, error) {
+	result := make(map[string]interface{})
+	result[m.Name] = m.Value
+	if m.ClientName != "" {
+		result["clientName"] = m.ClientName
+	}
+	return json.Marshal(result)
 }

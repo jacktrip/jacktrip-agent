@@ -340,7 +340,7 @@ func (ac *AutoConnector) Run(wg *sync.WaitGroup) {
 // CollectMetrics collects JACK + JackTrip metrics
 // TODO: Jamulus
 func (ac *AutoConnector) CollectMetrics() []client.ServerMetric {
-	metrics := []client.ServerMetric{{Name: "virtual_studio_up", Service: "jackd", Value: 0}}
+	metrics := []client.ServerMetric{{Name: "virtual_studio_jackd_up", Value: 0}}
 	jackClient, err := initClient("", nil, nil, false)
 	if err != nil {
 		return metrics
@@ -350,11 +350,11 @@ func (ac *AutoConnector) CollectMetrics() []client.ServerMetric {
 	// Update "virtual_studio_up" now that jackd is running
 	metrics[0].Value = 1
 
-	allPorts := client.ServerMetric{Name: "virtual_studio_connections", Service: "total", Value: 0}
-	systemPorts := client.ServerMetric{Name: "virtual_studio_connections", Service: "system", Value: 0}
-	scPorts := client.ServerMetric{Name: "virtual_studio_connections", Service: "supercollider", Value: 0}
-	jamulusPorts := client.ServerMetric{Name: "virtual_studio_connections", Service: "jamulus", Value: 0}
-	clientPorts := client.ServerMetric{Name: "virtual_studio_connections", Service: "clients_total", Value: 0}
+	allPorts := client.ServerMetric{Name: "virtual_studio_connections_total", Value: 0}
+	systemPorts := client.ServerMetric{Name: "virtual_studio_connections_system", Value: 0}
+	scPorts := client.ServerMetric{Name: "virtual_studio_connections_supercollider", Value: 0}
+	jamulusPorts := client.ServerMetric{Name: "virtual_studio_connections_jamulus", Value: 0}
+	clientPorts := client.ServerMetric{Name: "virtual_studio_connections_clients_total", Value: 0}
 
 	ports := jackClient.GetPorts(".*", "", 0)
 	for _, port := range ports {
@@ -383,7 +383,7 @@ func (ac *AutoConnector) CollectMetrics() []client.ServerMetric {
 	metrics = append(metrics, clientPorts)
 
 	// Count the number of unique clients, removing Jamulus
-	uniqueClients := client.ServerMetric{Name: "virtual_studio_connections", Service: "clients_unique", Value: float64(len(ac.KnownClients) - 1)}
+	uniqueClients := client.ServerMetric{Name: "virtual_studio_clients_unique", Value: float64(len(ac.KnownClients) - 1)}
 	metrics = append(metrics, uniqueClients)
 	for key := range ac.KnownClients {
 		if key == "Jamulus" {
