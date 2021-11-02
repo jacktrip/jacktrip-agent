@@ -85,7 +85,9 @@ func updateICMPPing(beat *client.DeviceHeartbeat, icmpStats *goping.Statistics) 
 	beat.MaxRtt = icmpStats.MaxRtt
 	beat.AvgRtt = icmpStats.AvgRtt
 	beat.StdDevRtt = icmpStats.StdDevRtt
-	beat.LatestRtt = icmpStats.Rtts[len(icmpStats.Rtts)-1]
+	if len(icmpStats.Rtts) > 0 {
+		beat.LatestRtt = icmpStats.Rtts[len(icmpStats.Rtts)-1]
+	}
 	beat.PacketsSent = icmpStats.PacketsSent
 	beat.PacketsRecv = icmpStats.PacketsRecv
 	beat.StatsUpdatedAt = time.Now()
@@ -113,7 +115,9 @@ func updateWSPing(beat *client.DeviceHeartbeat, rtts []time.Duration) {
 	beat.MaxRtt = maxRtt
 	beat.AvgRtt = avgRtt
 	beat.StdDevRtt = time.Duration(math.Sqrt(float64(sd.Nanoseconds() / int64(len(rtts)))))
-	beat.LatestRtt = rtts[len(rtts)-1]
+	if len(rtts) > 0 {
+		beat.LatestRtt = rtts[len(rtts)-1]
+	}
 	beat.PacketsSent = HeartbeatInterval
 	beat.PacketsRecv = len(rtts)
 	beat.StatsUpdatedAt = time.Now()
