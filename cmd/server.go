@@ -239,9 +239,9 @@ func updateSuperColliderConfigs(config client.AgentConfig) {
 	audioBusses := (numInputChannels + numOutputChannels) * 2
 
 	// bump memory for larger systems
-	scMemorySize := 65536
+	scMemorySize := 262144
 	if maxClients > 50 {
-		scMemorySize = 262144
+		scMemorySize = 1048576
 	}
 
 	// lower bufsize if jack is lower
