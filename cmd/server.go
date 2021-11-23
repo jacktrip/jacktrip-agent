@@ -90,18 +90,11 @@ func runOnServer(apiOrigin string) {
 		os.Exit(1)
 	}
 
-	cloudID := os.Getenv("JACKTRIP_CLOUD_ID")
-	if cloudID == "" {
-		err := errors.New("empty cloudID")
-		log.Error(err, "a valid cloudID is required for server mode")
-		os.Exit(1)
-	}
-
 	// TODO: get server credentials
 	credentials := client.AgentCredentials{}
 
 	// CloudID may be empty if not on a managed cloud server
-	beat := client.ServerHeartbeat{CloudID: cloudID}
+	beat := client.ServerHeartbeat{CloudID: os.Getenv("JACKTRIP_CLOUD_ID")}
 
 	log.Info("Running jacktrip-agent in server mode")
 
