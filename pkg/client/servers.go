@@ -84,6 +84,7 @@ type ServerMetric struct {
 	ClientName string `json:"clientName,omitempty"`
 }
 
+// MarshalJSON formats the metric into a custom JSON structure
 func (m *ServerMetric) MarshalJSON() ([]byte, error) {
 	result := make(map[string]interface{})
 	result[m.Name] = m.Value
