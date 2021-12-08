@@ -16,18 +16,30 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 )
 
+const (
+	MediaDir = "/tmp/vs-media"
+)
+
 // runHTTPServer runs the agent's HTTP server
 func runHTTPServer(wg *sync.WaitGroup, router *mux.Router, address string) error {
 	defer wg.Done()
+	log.Info("Creating media directory")
+	err := os.MkdirAll(MediaDir, os.ModePerm)
+	if err != nil {
+		log.Error(err, "Failed creating media directory")
+	}
 	log.Info("Starting an agent HTTP server")
-	err := http.ListenAndServe(address, router)
+	err = http.ListenAndServe(address, router)
 	if err != nil {
 		log.Error(err, "HTTP server error")
 	}
@@ -70,6 +82,64 @@ func handlePingRequest(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
+}
+
+// handleListenRequest loads the minimal set of elements for a live audio player
+func handleListenRequest(w http.ResponseWriter, r *http.Request) {
+	rawHTML := `
+<html>
+  <head>
+    <title>Hls.js demo - basic usage</title>
+  </head>
+  <body style="background-color:black;">
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+	  <center>
+	    <video height="600" id="video" controls></video>
+	  </center>
+	<script>
+	  // Source: https://github.com/dailymotion/hls.js/blob/master/demo/basic-usage.html
+	  if(Hls.isSupported()) {
+	    var video = document.getElementById('video');
+		var hls = new Hls();
+		hls.loadSource('/stream');
+		hls.attachMedia(video);
+		hls.on(Hls.Events.MANIFEST_PARSED,function() {
+		  video.play();
+		});
+	  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+		video.src = '/stream';
+		video.addEventListener('canplay',function() {
+		  video.play();
+		});
+	  }
+	</script>
+  </body>
+</html>
+`
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(rawHTML))
+}
+
+// handleStreamRequest handles the initiation of a HLS stream
+func handleStreamRequest(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, ok := vars["id"]
+	if !ok {
+		id = "720p.m3u8"
+	}
+	serveHLS(w, r, MediaDir, id)
+}
+
+// serveHLS responds with proper media-encoded responses for HLS streams
+func serveHLS(w http.ResponseWriter, r *http.Request, mediaBase, m3u8Name string) {
+	mediaFile := fmt.Sprintf("%s/%s", mediaBase, m3u8Name)
+	contentType := "video/MP2T"
+	if strings.HasSuffix(mediaFile, ".m3u8") {
+		contentType = "application/x-mpegURL"
+	}
+	http.ServeFile(w, r, mediaFile)
+	w.Header().Set("Content-Type", contentType)
 }
 
 // OptionsGetOnly responds with a list of allow methods for Get only
