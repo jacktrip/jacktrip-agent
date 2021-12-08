@@ -16,6 +16,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -63,7 +64,7 @@ func updateServiceConfigs(config client.AgentConfig, remoteName string, isServer
 		jackConfig = fmt.Sprintf(JackServerConfigTemplate, config.SampleRate, config.Period)
 		jackTripConfig = fmt.Sprintf(JackTripServerConfigTemplate, config.Port, jackTripExtraOpts)
 	} else {
-		updateJamulusIni(config)
+		updateJamulusIni(config, remoteName)
 
 		jackConfig = fmt.Sprintf(JackDeviceConfigTemplate, soundDeviceName, config.SampleRate, config.Period)
 
@@ -136,7 +137,7 @@ func updateServiceConfigs(config client.AgentConfig, remoteName string, isServer
 }
 
 // updateJamulusIni writes a new /tmp/jamulus.ini file using template at /var/lib/jacktrip/jamulus.ini
-func updateJamulusIni(config client.AgentConfig) {
+func updateJamulusIni(config client.AgentConfig, remoteName string) {
 	srcFileName := "/var/lib/jacktrip/jamulus.ini"
 	srcFile, err := os.Open(srcFileName)
 	if err != nil {
@@ -159,11 +160,15 @@ func updateJamulusIni(config client.AgentConfig) {
 	writer := bufio.NewWriter(dstFile)
 	scanner := bufio.NewScanner(srcFile)
 	audioQualityRx := regexp.MustCompile(`.*<audioquality>.*</audioquality>.*`)
+	nameRx := regexp.MustCompile(`.*<name_base64>.*</name_base64>.*`)
 
 	writeToFile := func() {
 		line := scanner.Text()
 		if audioQualityRx.MatchString(line) {
-			line = fmt.Sprintf("<audioquality>%d</audioquality>", quality)
+			line = fmt.Sprintf(" <audioquality>%d</audioquality>", quality)
+		}
+		if nameRx.MatchString(line) {
+			line = fmt.Sprintf(" <name_base64>%s</name_base64>", base64.StdEncoding.EncodeToString([]byte(remoteName)))
 		}
 		_, err = writer.WriteString(line + "\n")
 		if err != nil {
