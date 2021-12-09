@@ -98,16 +98,17 @@ func handleListenRequest(w http.ResponseWriter, r *http.Request) {
 	  </center>
 	<script>
 	  // Source: https://github.com/dailymotion/hls.js/blob/master/demo/basic-usage.html
+	  var streamAPI = "https://stream.mux.com/v69RSHhFelSm4701snP22dYz2jICy4E4FUyk02rW4gxRM.m3u8";
 	  if(Hls.isSupported()) {
 	    var video = document.getElementById('video');
 		var hls = new Hls();
-		hls.loadSource('/stream');
+		hls.loadSource(streamAPI);
 		hls.attachMedia(video);
 		hls.on(Hls.Events.MANIFEST_PARSED,function() {
 		  video.play();
 		});
 	  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-		video.src = '/stream';
+		video.src = streamAPI;
 		video.addEventListener('canplay',function() {
 		  video.play();
 		});

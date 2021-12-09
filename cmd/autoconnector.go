@@ -226,7 +226,7 @@ func (ac *AutoConnector) onShutdown() {
 	ac.RegistrationChan <- jack.PortId(0)
 }
 
-func initClient(name string, portReg jack.PortRegistrationCallback, shutdown jack.ShutdownCallback, close bool) (*jack.Client, error) {
+func initClient(name string, prc jack.PortRegistrationCallback, sc jack.ShutdownCallback, pc jack.ProcessCallback, preActivationMethod func(client *jack.Client), close bool) (*jack.Client, error) {
 	client, code := jack.ClientOpen(name, jack.NoStartServer)
 	if client == nil || code != 0 {
 		err := jack.StrError(code)
@@ -234,16 +234,28 @@ func initClient(name string, portReg jack.PortRegistrationCallback, shutdown jac
 		return nil, err
 	}
 	// Set port registration handler
-	if portReg != nil {
-		if code := client.SetPortRegistrationCallback(portReg); code != 0 {
+	if prc != nil {
+		if code := client.SetPortRegistrationCallback(prc); code != 0 {
 			err := jack.StrError(code)
 			log.Error(jack.StrError(code), "Failed to set port registration callback")
 			return nil, err
 		}
 	}
+	// Set process handler
+	if pc != nil {
+		if code := client.SetProcessCallback(pc); code != 0 {
+			err := jack.StrError(code)
+			log.Error(jack.StrError(code), "Failed to set process callback")
+			return nil, err
+		}
+	}
 	// Set shutdown handler
-	if shutdown != nil {
-		client.OnShutdown(shutdown)
+	if sc != nil {
+		client.OnShutdown(sc)
+	}
+	// Call any special routine prior to (like establishing ports)
+	if preActivationMethod != nil {
+		preActivationMethod(client)
 	}
 	if code := client.Activate(); code != 0 {
 		err := jack.StrError(code)
@@ -271,7 +283,7 @@ func (ac *AutoConnector) connect(portID jack.PortId) error {
 		if err != nil {
 			return err
 		}
-		client, err := initClient(ac.Name, ac.handlePortRegistration, ac.onShutdown, false)
+		client, err := initClient(ac.Name, ac.handlePortRegistration, ac.onShutdown, nil, nil, false)
 		if err != nil {
 			return err
 		}
@@ -308,7 +320,7 @@ func (ac *AutoConnector) SetupClient() {
 	if err != nil {
 		panic(err)
 	}
-	client, err := initClient(ac.Name, ac.handlePortRegistration, ac.onShutdown, false)
+	client, err := initClient(ac.Name, ac.handlePortRegistration, ac.onShutdown, nil, nil, false)
 	if err != nil {
 		panic(err)
 	}
@@ -341,7 +353,7 @@ func (ac *AutoConnector) Run(wg *sync.WaitGroup) {
 // TODO: Jamulus
 func (ac *AutoConnector) CollectMetrics() []client.ServerMetric {
 	metrics := []client.ServerMetric{{Name: "virtual_studio_jackd_up", Value: 0}}
-	jackClient, err := initClient("", nil, nil, false)
+	jackClient, err := initClient("", nil, nil, nil, nil, false)
 	if err != nil {
 		return metrics
 	}
@@ -382,11 +394,11 @@ func (ac *AutoConnector) CollectMetrics() []client.ServerMetric {
 	metrics = append(metrics, jamulusPorts)
 	metrics = append(metrics, clientPorts)
 
-	// Count the number of unique clients, removing Jamulus
-	uniqueClients := client.ServerMetric{Name: "virtual_studio_jack_clients_unique", Value: float64(len(ac.KnownClients) - 1)}
+	// Count the number of unique clients, removing Jamulus + recorder
+	uniqueClients := client.ServerMetric{Name: "virtual_studio_jack_clients_unique", Value: float64(len(ac.KnownClients) - 2)}
 	metrics = append(metrics, uniqueClients)
 	for key := range ac.KnownClients {
-		if key == "Jamulus" {
+		if key == "Jamulus" || key == "recorder" {
 			continue
 		}
 		new := client.ServerMetric{Name: "virtual_studio_jack_clients", ClientName: key, Value: 1}
@@ -398,7 +410,7 @@ func (ac *AutoConnector) CollectMetrics() []client.ServerMetric {
 // jack_wait reimplementation
 func waitForDaemon() error {
 	err := RetryWithBackoff(func() error {
-		_, err := initClient("", nil, nil, true)
+		_, err := initClient("", nil, nil, nil, nil, true)
 		return err
 	})
 	if err != nil {

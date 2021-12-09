@@ -79,6 +79,7 @@ const (
 
 var lastConfig client.AgentConfig
 var ac *AutoConnector
+var recorder *Recorder
 
 // runOnServer is used to run jacktrip-agent on an audio cloud server
 func runOnServer(apiOrigin string) {
@@ -138,6 +139,11 @@ func runOnServer(apiOrigin string) {
 	ac = NewAutoConnector()
 	wg.Add(1)
 	go ac.Run(&wg)
+
+	// Start JACK recorder
+	recorder = NewRecorder()
+	wg.Add(1)
+	go recorder.Run(&wg)
 
 	// wait for everything to complete
 	wg.Wait()
@@ -204,10 +210,12 @@ func handleServerUpdate(config client.AgentConfig) {
 
 		// shutdown or restart managed services
 		ac.TeardownClient()
+		recorder.TeardownClient()
 		restartAllServices(config, true)
 		// jack client will error when the server is only using Jamulus
 		if config.Type != client.Jamulus {
 			ac.SetupClient()
+			recorder.SetupClient()
 		}
 	}
 
@@ -219,7 +227,7 @@ func updateSuperColliderConfigs(config client.AgentConfig) {
 	// write SuperCollider (server) config file
 
 	// calculate maxClients and other variables
-	maxClients := runtime.NumCPU() * MaxClientsPerProcessor
+	maxClients := runtime.NumCPU()*MaxClientsPerProcessor + 1
 	maxClientsEnv := os.Getenv("JACKTRIP_MAX_CLIENTS")
 	if maxClientsEnv != "" {
 		c, err := strconv.Atoi(maxClientsEnv)
