@@ -4,6 +4,7 @@ go 1.16
 
 require (
 	github.com/coreos/go-systemd/v22 v22.1.0
+	github.com/go-audio/wav v1.0.0
 	github.com/go-logr/zapr v0.3.0
 	github.com/go-ping/ping v0.0.0-20201115131931-3300c582a663
 	github.com/gorilla/mux v1.8.0

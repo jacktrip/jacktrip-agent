@@ -16,13 +16,35 @@ package main
 
 import (
 	"fmt"
+	"math"
+	"os"
 	"sync"
 	"time"
 
+	"github.com/go-audio/wav"
 	"github.com/xthexder/go-jack"
 )
 
-var AudioInPorts []*jack.Port
+const (
+	FileDuration   = 10
+	FileCountLimit = 10
+	NumChannels    = 2
+	// Changing this will also involve changes in AudioSampleBuffer and in the process handler
+	BitDepth = 16
+	MaxBit   = math.MaxInt16
+)
+
+var (
+	AudioInPorts      []*jack.Port
+	AudioFilenames    []string
+	AudioSampleBuffer []uint16
+	JackSampleRate    int
+	JackBufferSize    int
+	SampleCounter     int
+	fileHandler       *os.File
+	wavLock           sync.Mutex
+	wavOut            *wav.Encoder
+)
 
 // Recorder listens to audio and records it to disk
 type Recorder struct {
@@ -40,15 +62,75 @@ func NewRecorder() *Recorder {
 	}
 }
 
+func openWavSafe() {
+	wavLock.Lock()
+	defer wavLock.Unlock()
+	openWavUnsafe()
+}
+
+func openWavUnsafe() {
+	// TODO: Make filename secret-like
+	now := time.Now().Unix()
+	filename := fmt.Sprintf("%s/test-%d.wav", MediaDir, now)
+	fileHandler, err := os.Create(filename)
+	if err != nil {
+		panic(err)
+	}
+	// Keep track of files created and rotate files
+	AudioFilenames = append(AudioFilenames, filename)
+	if len(AudioFilenames) >= FileCountLimit {
+		toRemove := AudioFilenames[0]
+		AudioFilenames = AudioFilenames[1:]
+		os.Remove(toRemove)
+	}
+	wavOut = wav.NewEncoder(fileHandler, JackSampleRate, BitDepth, NumChannels, 1)
+}
+
+func closeWavSafe() {
+	wavLock.Lock()
+	defer wavLock.Unlock()
+	closeWavUnsafe()
+}
+
+func closeWavUnsafe() {
+	if wavOut != nil {
+		wavOut.Close()
+		wavOut = nil
+	}
+	if fileHandler != nil {
+		fileHandler.Close()
+		fileHandler = nil
+	}
+}
+
+func flush(sampleBuffer []uint16) {
+	if len(sampleBuffer) > 0 {
+		openWavSafe()
+		for _, sample := range sampleBuffer {
+			wavOut.WriteFrame(sample)
+		}
+		closeWavSafe()
+	}
+}
+
 // processBuffer reads frames from the port's buffer
 func processBuffer(nframes uint32) int {
-	/* TODO: I'm getting 128-length arrays with floats...now what do I do
-	for _, in := range AudioInPorts {
-		samplesIn := in.GetBuffer(nframes)
-		fmt.Println(samplesIn)
-		fmt.Println(len(samplesIn))
+	if len(AudioSampleBuffer) >= JackSampleRate*NumChannels*FileDuration {
+		go flush(AudioSampleBuffer)
+		AudioSampleBuffer = []uint16{}
 	}
-	*/
+	size := JackBufferSize * NumChannels
+	if size <= 0 {
+		return 0
+	}
+	interleaved := make([]uint16, size)
+	for i, port := range AudioInPorts {
+		samples := port.GetBuffer(nframes)
+		for j, sample := range samples {
+			interleaved[j*NumChannels+i] = uint16(sample * MaxBit)
+		}
+	}
+	AudioSampleBuffer = append(AudioSampleBuffer, interleaved...)
 	return 0
 }
 
@@ -58,8 +140,7 @@ func (r *Recorder) onShutdown() {
 	defer r.ClientLock.Unlock()
 	r.JackClient = nil
 	AudioInPorts = nil
-	// Wait for jackd to restart, then notify channel recipient to re-initialize client
-	time.Sleep(5 * time.Second)
+	closeWavSafe()
 }
 
 // TeardownClient closes the currently active JACK client
@@ -71,19 +152,21 @@ func (r *Recorder) TeardownClient() {
 	}
 	r.JackClient = nil
 	AudioInPorts = nil
+	closeWavSafe()
 	log.Info("Teardown of JACK client completed")
 }
 
 // SetupClient establishes a new client to listen in on JACK ports
 func (r *Recorder) SetupClient() {
+	var err error
 	r.ClientLock.Lock()
 	defer r.ClientLock.Unlock()
-	err := waitForDaemon()
+	err = waitForDaemon()
 	if err != nil {
 		panic(err)
 	}
 	portRegistrationFunc := func(client *jack.Client) {
-		for i := 1; i <= 2; i++ {
+		for i := 1; i <= NumChannels; i++ {
 			portName := fmt.Sprintf("send_%d", i)
 			portIn := client.PortRegister(portName, jack.DEFAULT_AUDIO_TYPE, jack.PortIsInput, 0)
 			AudioInPorts = append(AudioInPorts, portIn)
@@ -94,6 +177,8 @@ func (r *Recorder) SetupClient() {
 		panic(err)
 	}
 	r.JackClient = client
+	JackSampleRate = int(r.JackClient.GetSampleRate())
+	JackBufferSize = int(r.JackClient.GetBufferSize())
 	log.Info("Setup of JACK client completed", "name", r.JackClient.GetName())
 }
 
