@@ -98,7 +98,7 @@ func handleListenRequest(w http.ResponseWriter, r *http.Request) {
 	  </center>
 	<script>
 	  // Source: https://github.com/dailymotion/hls.js/blob/master/demo/basic-usage.html
-	  var streamAPI = "https://stream.mux.com/v69RSHhFelSm4701snP22dYz2jICy4E4FUyk02rW4gxRM.m3u8";
+	  var streamAPI = "/stream/playlist.m3u8";
 	  if(Hls.isSupported()) {
 	    var video = document.getElementById('video');
 		var hls = new Hls();
@@ -127,7 +127,7 @@ func handleStreamRequest(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, ok := vars["id"]
 	if !ok {
-		id = "720p.m3u8"
+		id = "playlist.m3u8"
 	}
 	serveHLS(w, r, MediaDir, id)
 }

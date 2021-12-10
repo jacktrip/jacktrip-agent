@@ -106,7 +106,6 @@ func runOnServer(apiOrigin string) {
 	router := mux.NewRouter()
 	router.HandleFunc("/ping", handlePingRequest).Methods("GET")
 	router.HandleFunc("/listen", handleListenRequest).Methods("GET")
-	router.HandleFunc("/stream", handleStreamRequest).Methods("GET")
 	router.HandleFunc("/stream/{id}", handleStreamRequest).Methods("GET")
 	router.PathPrefix("/").Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		OptionsGetOnly(w, r)

@@ -9,6 +9,7 @@ require (
 	github.com/go-ping/ping v0.0.0-20201115131931-3300c582a663
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.4.2
+	github.com/grafov/m3u8 v0.11.1
 	github.com/jmoiron/sqlx v1.2.0
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/stretchr/testify v1.7.0

@@ -18,10 +18,14 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-audio/wav"
+	"github.com/grafov/m3u8"
 	"github.com/xthexder/go-jack"
 )
 
@@ -38,6 +42,7 @@ var (
 	AudioInPorts      []*jack.Port
 	AudioFilenames    []string
 	AudioSampleBuffer []uint16
+	HLSPlaylist       *m3u8.MediaPlaylist
 	JackSampleRate    int
 	JackBufferSize    int
 	SampleCounter     int
@@ -103,6 +108,20 @@ func closeWavUnsafe() {
 	}
 }
 
+func updateHLSPlaylist() {
+	if HLSPlaylist != nil {
+		file := AudioFilenames[len(AudioFilenames)-1]
+		dir, basename := filepath.Split(file)
+		filename := strings.TrimSuffix(basename, filepath.Ext(basename))
+		mp3Filename := fmt.Sprintf("%s.mp3", filename)
+		cmd := exec.Command("ffmpeg", "-i", file, "-q:a", "0", filepath.Join(dir, mp3Filename))
+		cmd.Run()
+		HLSPlaylist.Slide(mp3Filename, FileDuration, "")
+		dest := fmt.Sprintf("%s/playlist.m3u8", MediaDir)
+		os.WriteFile(dest, HLSPlaylist.Encode().Bytes(), 0644)
+	}
+}
+
 func flush(sampleBuffer []uint16) {
 	if len(sampleBuffer) > 0 {
 		openWavSafe()
@@ -110,6 +129,7 @@ func flush(sampleBuffer []uint16) {
 			wavOut.WriteFrame(sample)
 		}
 		closeWavSafe()
+		updateHLSPlaylist()
 	}
 }
 
@@ -141,6 +161,10 @@ func (r *Recorder) onShutdown() {
 	r.JackClient = nil
 	AudioInPorts = nil
 	closeWavSafe()
+	for _, filename := range AudioFilenames {
+		os.Remove(filename)
+	}
+	AudioFilenames = nil
 }
 
 // TeardownClient closes the currently active JACK client
@@ -153,6 +177,10 @@ func (r *Recorder) TeardownClient() {
 	r.JackClient = nil
 	AudioInPorts = nil
 	closeWavSafe()
+	for _, filename := range AudioFilenames {
+		os.Remove(filename)
+	}
+	AudioFilenames = nil
 	log.Info("Teardown of JACK client completed")
 }
 
@@ -179,6 +207,10 @@ func (r *Recorder) SetupClient() {
 	r.JackClient = client
 	JackSampleRate = int(r.JackClient.GetSampleRate())
 	JackBufferSize = int(r.JackClient.GetBufferSize())
+	HLSPlaylist, err = m3u8.NewMediaPlaylist(10, 20)
+	if err != nil {
+		panic(err)
+	}
 	log.Info("Setup of JACK client completed", "name", r.JackClient.GetName())
 }
 
