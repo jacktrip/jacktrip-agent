@@ -67,13 +67,9 @@ func NewRecorder() *Recorder {
 	}
 }
 
-func openWavSafe() {
+func openWav() {
 	wavLock.Lock()
 	defer wavLock.Unlock()
-	openWavUnsafe()
-}
-
-func openWavUnsafe() {
 	// TODO: Make filename secret-like
 	now := time.Now().Unix()
 	filename := fmt.Sprintf("%s/test-%d.wav", MediaDir, now)
@@ -87,17 +83,18 @@ func openWavUnsafe() {
 		toRemove := AudioFilenames[0]
 		AudioFilenames = AudioFilenames[1:]
 		os.Remove(toRemove)
+		filename := strings.TrimSuffix(toRemove, filepath.Ext(toRemove))
+		mp3Filename := fmt.Sprintf("%s.mp3", filename)
+		if _, err := os.Stat(mp3Filename); err == nil {
+			os.Remove(mp3Filename)
+		}
 	}
 	wavOut = wav.NewEncoder(fileHandler, JackSampleRate, BitDepth, NumChannels, 1)
 }
 
-func closeWavSafe() {
+func closeWav() {
 	wavLock.Lock()
 	defer wavLock.Unlock()
-	closeWavUnsafe()
-}
-
-func closeWavUnsafe() {
 	if wavOut != nil {
 		wavOut.Close()
 		wavOut = nil
@@ -124,11 +121,11 @@ func updateHLSPlaylist() {
 
 func flush(sampleBuffer []uint16) {
 	if len(sampleBuffer) > 0 {
-		openWavSafe()
+		openWav()
 		for _, sample := range sampleBuffer {
 			wavOut.WriteFrame(sample)
 		}
-		closeWavSafe()
+		closeWav()
 		updateHLSPlaylist()
 	}
 }
@@ -139,6 +136,7 @@ func processBuffer(nframes uint32) int {
 		go flush(AudioSampleBuffer)
 		AudioSampleBuffer = []uint16{}
 	}
+	//
 	size := JackBufferSize * NumChannels
 	if size <= 0 {
 		return 0
@@ -160,9 +158,16 @@ func (r *Recorder) onShutdown() {
 	defer r.ClientLock.Unlock()
 	r.JackClient = nil
 	AudioInPorts = nil
-	closeWavSafe()
+	JackSampleRate = 0
+	JackBufferSize = 0
+	closeWav()
 	for _, filename := range AudioFilenames {
 		os.Remove(filename)
+		basename := strings.TrimSuffix(filename, filepath.Ext(filename))
+		mp3Filename := fmt.Sprintf("%s.mp3", basename)
+		if _, err := os.Stat(mp3Filename); err == nil {
+			os.Remove(mp3Filename)
+		}
 	}
 	AudioFilenames = nil
 }
@@ -176,9 +181,16 @@ func (r *Recorder) TeardownClient() {
 	}
 	r.JackClient = nil
 	AudioInPorts = nil
-	closeWavSafe()
+	JackSampleRate = 0
+	JackBufferSize = 0
+	closeWav()
 	for _, filename := range AudioFilenames {
 		os.Remove(filename)
+		basename := strings.TrimSuffix(filename, filepath.Ext(filename))
+		mp3Filename := fmt.Sprintf("%s.mp3", basename)
+		if _, err := os.Stat(mp3Filename); err == nil {
+			os.Remove(mp3Filename)
+		}
 	}
 	AudioFilenames = nil
 	log.Info("Teardown of JACK client completed")
