@@ -60,6 +60,9 @@ type Recorder struct {
 }
 
 // NewRecorder constructs a new instance of Recorder
+// TODO: Should we merge this and make it part of autoconnector?
+//       Is there any benefit to having 2 JACK clients vs 1?
+//       There's a lot of shared code between them
 func NewRecorder() *Recorder {
 	return &Recorder{
 		Name:     "recorder",
@@ -111,8 +114,10 @@ func updateHLSPlaylist() {
 		dir, basename := filepath.Split(file)
 		filename := strings.TrimSuffix(basename, filepath.Ext(basename))
 		mp3Filename := fmt.Sprintf("%s.mp3", filename)
+		// TODO: Is there a better way to do the conversion?
 		cmd := exec.Command("ffmpeg", "-i", file, "-q:a", "0", filepath.Join(dir, mp3Filename))
 		cmd.Run()
+		// TODO: Slide vs Append? IDK what's better yet
 		HLSPlaylist.Slide(mp3Filename, FileDuration, "")
 		dest := fmt.Sprintf("%s/playlist.m3u8", MediaDir)
 		os.WriteFile(dest, HLSPlaylist.Encode().Bytes(), 0644)
@@ -136,7 +141,7 @@ func processBuffer(nframes uint32) int {
 		go flush(AudioSampleBuffer)
 		AudioSampleBuffer = []uint16{}
 	}
-	//
+	// JackBufferSize is global in order for the process callback to access it - check if it's been set otherwise there will be no data
 	size := JackBufferSize * NumChannels
 	if size <= 0 {
 		return 0
@@ -161,6 +166,7 @@ func (r *Recorder) onShutdown() {
 	JackSampleRate = 0
 	JackBufferSize = 0
 	closeWav()
+	// TODO: I'm pretty sure this isn't working atm - figure out why
 	for _, filename := range AudioFilenames {
 		os.Remove(filename)
 		basename := strings.TrimSuffix(filename, filepath.Ext(filename))
@@ -184,6 +190,7 @@ func (r *Recorder) TeardownClient() {
 	JackSampleRate = 0
 	JackBufferSize = 0
 	closeWav()
+	// TODO: I'm pretty sure this isn't working atm - figure out why
 	for _, filename := range AudioFilenames {
 		os.Remove(filename)
 		basename := strings.TrimSuffix(filename, filepath.Ext(filename))
@@ -232,7 +239,7 @@ func (r *Recorder) Run(wg *sync.WaitGroup) {
 	for {
 		_, ok := <-r.Shutdown
 		if !ok {
-			log.Info("Registration channel is closed")
+			log.Info("Shutdown channel is closed")
 			return
 		}
 	}
