@@ -33,18 +33,23 @@ const (
 // runHTTPServer runs the agent's HTTP server
 func runHTTPServer(wg *sync.WaitGroup, router *mux.Router, address string) error {
 	defer wg.Done()
-	log.Info("Creating media directory")
-	err := os.MkdirAll(MediaDir, os.ModePerm)
-	if err != nil {
-		log.Error(err, "Failed creating media directory")
-	}
+	cleanseMediaDirectory()
 	log.Info("Starting an agent HTTP server")
-	err = http.ListenAndServe(address, router)
+	err := http.ListenAndServe(address, router)
 	if err != nil {
 		log.Error(err, "HTTP server error")
 	}
 
 	return err
+}
+
+func cleanseMediaDirectory() {
+	log.Info("Creating media directory")
+	os.RemoveAll(MediaDir)
+	err := os.MkdirAll(MediaDir, os.ModePerm)
+	if err != nil {
+		log.Error(err, "Failed creating media directory")
+	}
 }
 
 // handlePingRequest upgrades ping request to a websocket responder
@@ -135,9 +140,11 @@ func handleStreamRequest(w http.ResponseWriter, r *http.Request) {
 // serveHLS responds with proper media-encoded responses for HLS streams
 func serveHLS(w http.ResponseWriter, r *http.Request, mediaBase, m3u8Name string) {
 	mediaFile := fmt.Sprintf("%s/%s", mediaBase, m3u8Name)
-	contentType := "video/MP2T"
+	contentType := "audio/mp4"
 	if strings.HasSuffix(mediaFile, ".m3u8") {
 		contentType = "application/x-mpegURL"
+	} else if strings.HasSuffix(mediaFile, ".ts") {
+		contentType = "video/MP2T"
 	}
 	http.ServeFile(w, r, mediaFile)
 	w.Header().Set("Content-Type", contentType)

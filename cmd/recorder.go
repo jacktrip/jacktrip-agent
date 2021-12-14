@@ -20,12 +20,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/go-audio/wav"
 	"github.com/grafov/m3u8"
+	"github.com/mewkiz/flac"
+	"github.com/mewkiz/flac/frame"
+	"github.com/mewkiz/flac/meta"
+	"github.com/mewkiz/pkg/pathutil"
 	"github.com/xthexder/go-jack"
 )
 
@@ -33,22 +35,20 @@ const (
 	FileDuration   = 10
 	FileCountLimit = 10
 	NumChannels    = 2
-	// Changing this will also involve changes in AudioSampleBuffer and in the process handler
+	// Changing this will also involve changes in the process handler
 	BitDepth = 16
 	MaxBit   = math.MaxInt16
 )
 
 var (
-	AudioInPorts      []*jack.Port
-	AudioFilenames    []string
-	AudioSampleBuffer []uint16
-	HLSPlaylist       *m3u8.MediaPlaylist
-	JackSampleRate    int
-	JackBufferSize    int
-	SampleCounter     int
-	fileHandler       *os.File
-	wavLock           sync.Mutex
-	wavOut            *wav.Encoder
+	AudioInPorts   []*jack.Port
+	AudioFilenames []string
+	FrameBuffer    []frame.Frame
+	HLSPlaylist    *m3u8.MediaPlaylist
+	JackSampleRate int
+	JackBufferSize int
+	fhLock         sync.Mutex
+	encoder        *flac.Encoder
 )
 
 // Recorder listens to audio and records it to disk
@@ -70,90 +70,121 @@ func NewRecorder() *Recorder {
 	}
 }
 
-func openWav() {
-	wavLock.Lock()
-	defer wavLock.Unlock()
+func openFLAC() {
+	fhLock.Lock()
+	defer fhLock.Unlock()
+	if JackSampleRate <= 0 {
+		return
+	}
 	// TODO: Make filename secret-like
 	now := time.Now().Unix()
-	filename := fmt.Sprintf("%s/test-%d.wav", MediaDir, now)
-	fileHandler, err := os.Create(filename)
+	name := fmt.Sprintf("%s/test-%d.flac", MediaDir, now)
+	fh, err := os.Create(name)
 	if err != nil {
 		panic(err)
 	}
 	// Keep track of files created and rotate files
-	AudioFilenames = append(AudioFilenames, filename)
+	AudioFilenames = append(AudioFilenames, name)
 	if len(AudioFilenames) >= FileCountLimit {
-		toRemove := AudioFilenames[0]
+		trash := AudioFilenames[0]
+		trashMP3 := pathutil.TrimExt(trash) + ".mp3"
 		AudioFilenames = AudioFilenames[1:]
-		os.Remove(toRemove)
-		filename := strings.TrimSuffix(toRemove, filepath.Ext(toRemove))
-		mp3Filename := fmt.Sprintf("%s.mp3", filename)
-		if _, err := os.Stat(mp3Filename); err == nil {
-			os.Remove(mp3Filename)
-		}
+		os.RemoveAll(trash)
+		os.RemoveAll(trashMP3)
 	}
-	wavOut = wav.NewEncoder(fileHandler, JackSampleRate, BitDepth, NumChannels, 1)
+	info := &meta.StreamInfo{
+		BlockSizeMin:  16,
+		BlockSizeMax:  65535,
+		SampleRate:    uint32(JackSampleRate),
+		NChannels:     NumChannels,
+		BitsPerSample: BitDepth,
+	}
+	encoder, err = flac.NewEncoder(fh, info)
 }
 
-func closeWav() {
-	wavLock.Lock()
-	defer wavLock.Unlock()
-	if wavOut != nil {
-		wavOut.Close()
-		wavOut = nil
-	}
-	if fileHandler != nil {
-		fileHandler.Close()
-		fileHandler = nil
+func closeFLAC() {
+	fhLock.Lock()
+	defer fhLock.Unlock()
+	if encoder != nil {
+		encoder.Close()
 	}
 }
 
 func updateHLSPlaylist() {
 	if HLSPlaylist != nil {
-		file := AudioFilenames[len(AudioFilenames)-1]
-		dir, basename := filepath.Split(file)
-		filename := strings.TrimSuffix(basename, filepath.Ext(basename))
-		mp3Filename := fmt.Sprintf("%s.mp3", filename)
+		orig := AudioFilenames[len(AudioFilenames)-1]
+		converted := pathutil.TrimExt(orig) + ".mp3"
+		basename := filepath.Base(converted)
 		// TODO: Is there a better way to do the conversion?
-		cmd := exec.Command("ffmpeg", "-i", file, "-q:a", "0", filepath.Join(dir, mp3Filename))
+		cmd := exec.Command("ffmpeg", "-i", orig, "-q:a", "0", converted)
 		cmd.Run()
 		// TODO: Slide vs Append? IDK what's better yet
-		HLSPlaylist.Slide(mp3Filename, FileDuration, "")
+		HLSPlaylist.Slide(basename, FileDuration, "")
 		dest := fmt.Sprintf("%s/playlist.m3u8", MediaDir)
 		os.WriteFile(dest, HLSPlaylist.Encode().Bytes(), 0644)
 	}
 }
 
-func flush(sampleBuffer []uint16) {
-	if len(sampleBuffer) > 0 {
-		openWav()
-		for _, sample := range sampleBuffer {
-			wavOut.WriteFrame(sample)
+func flush(frameBuffer []frame.Frame) {
+	if len(frameBuffer) > 0 {
+		openFLAC()
+		for _, frame := range frameBuffer {
+			if err := encoder.WriteFrame(&frame); err != nil {
+				fmt.Println(err)
+				return
+			}
 		}
-		closeWav()
+		closeFLAC()
 		updateHLSPlaylist()
 	}
 }
 
 // processBuffer reads frames from the port's buffer
 func processBuffer(nframes uint32) int {
-	if len(AudioSampleBuffer) >= JackSampleRate*NumChannels*FileDuration {
-		go flush(AudioSampleBuffer)
-		AudioSampleBuffer = []uint16{}
-	}
 	// JackBufferSize is global in order for the process callback to access it - check if it's been set otherwise there will be no data
-	size := JackBufferSize * NumChannels
-	if size <= 0 {
+	if JackBufferSize <= 0 || JackSampleRate <= 0 {
 		return 0
 	}
-	interleaved := make([]uint16, size)
+	if len(FrameBuffer) >= JackSampleRate*FileDuration/JackBufferSize {
+		go flush(FrameBuffer)
+		FrameBuffer = []frame.Frame{}
+	}
+	// Initialize new subframe/channel
+	subframes := make([]*frame.Subframe, NumChannels)
+	for i := range subframes {
+		subframe := &frame.Subframe{
+			Samples: make([]int32, JackBufferSize),
+		}
+		subframes[i] = subframe
+	}
+	// Dump raw sample data into respective subframes
 	for i, port := range AudioInPorts {
+		subHdr := frame.SubHeader{
+			Pred:   frame.PredVerbatim,
+			Order:  0,
+			Wasted: 0,
+		}
+		subframes[i].SubHeader = subHdr
+		subframes[i].NSamples = JackBufferSize
+		subframes[i].Samples = subframes[i].Samples[:JackBufferSize]
 		samples := port.GetBuffer(nframes)
 		for j, sample := range samples {
-			interleaved[j*NumChannels+i] = uint16(sample * MaxBit)
+			subframes[i].Samples[j] = int32(uint16(sample * MaxBit))
 		}
 	}
-	AudioSampleBuffer = append(AudioSampleBuffer, interleaved...)
+	// Package buffer of samples into frame
+	header := frame.Header{
+		HasFixedBlockSize: false,
+		BlockSize:         uint16(JackBufferSize),
+		SampleRate:        uint32(JackSampleRate),
+		Channels:          frame.ChannelsLR,
+		BitsPerSample:     BitDepth,
+	}
+	frame := &frame.Frame{
+		Header:    header,
+		Subframes: subframes,
+	}
+	FrameBuffer = append(FrameBuffer, *frame)
 	return 0
 }
 
@@ -165,17 +196,8 @@ func (r *Recorder) onShutdown() {
 	AudioInPorts = nil
 	JackSampleRate = 0
 	JackBufferSize = 0
-	closeWav()
-	// TODO: I'm pretty sure this isn't working atm - figure out why
-	for _, filename := range AudioFilenames {
-		os.Remove(filename)
-		basename := strings.TrimSuffix(filename, filepath.Ext(filename))
-		mp3Filename := fmt.Sprintf("%s.mp3", basename)
-		if _, err := os.Stat(mp3Filename); err == nil {
-			os.Remove(mp3Filename)
-		}
-	}
 	AudioFilenames = nil
+	closeFLAC()
 }
 
 // TeardownClient closes the currently active JACK client
@@ -189,17 +211,8 @@ func (r *Recorder) TeardownClient() {
 	AudioInPorts = nil
 	JackSampleRate = 0
 	JackBufferSize = 0
-	closeWav()
-	// TODO: I'm pretty sure this isn't working atm - figure out why
-	for _, filename := range AudioFilenames {
-		os.Remove(filename)
-		basename := strings.TrimSuffix(filename, filepath.Ext(filename))
-		mp3Filename := fmt.Sprintf("%s.mp3", basename)
-		if _, err := os.Stat(mp3Filename); err == nil {
-			os.Remove(mp3Filename)
-		}
-	}
 	AudioFilenames = nil
+	closeFLAC()
 	log.Info("Teardown of JACK client completed")
 }
 

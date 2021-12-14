@@ -4,13 +4,14 @@ go 1.16
 
 require (
 	github.com/coreos/go-systemd/v22 v22.1.0
-	github.com/go-audio/wav v1.0.0
 	github.com/go-logr/zapr v0.3.0
 	github.com/go-ping/ping v0.0.0-20201115131931-3300c582a663
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.4.2
 	github.com/grafov/m3u8 v0.11.1
 	github.com/jmoiron/sqlx v1.2.0
+	github.com/mewkiz/flac v1.0.7
+	github.com/mewkiz/pkg v0.0.0-20190919212034-518ade7978e2
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/stretchr/testify v1.7.0
 	github.com/xthexder/go-jack v0.0.0-20201026211055-5b07fb071116
