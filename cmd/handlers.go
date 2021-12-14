@@ -33,7 +33,7 @@ const (
 // runHTTPServer runs the agent's HTTP server
 func runHTTPServer(wg *sync.WaitGroup, router *mux.Router, address string) error {
 	defer wg.Done()
-	cleanseMediaDirectory()
+	createMediaDirectory()
 	log.Info("Starting an agent HTTP server")
 	err := http.ListenAndServe(address, router)
 	if err != nil {
@@ -43,7 +43,7 @@ func runHTTPServer(wg *sync.WaitGroup, router *mux.Router, address string) error
 	return err
 }
 
-func cleanseMediaDirectory() {
+func createMediaDirectory() {
 	log.Info("Creating media directory")
 	os.RemoveAll(MediaDir)
 	err := os.MkdirAll(MediaDir, os.ModePerm)

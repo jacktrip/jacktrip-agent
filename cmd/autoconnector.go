@@ -216,7 +216,7 @@ func (ac *AutoConnector) connectJamulusSuperCollider() {
 	}
 }
 
-// onShutdown only runs when upon unexpected connection error
+// onShutdown only runs upon unexpected connection error
 func (ac *AutoConnector) onShutdown() {
 	ac.ClientLock.Lock()
 	defer ac.ClientLock.Unlock()
@@ -350,7 +350,6 @@ func (ac *AutoConnector) Run(wg *sync.WaitGroup) {
 }
 
 // CollectMetrics collects JACK + JackTrip metrics
-// TODO: Jamulus
 func (ac *AutoConnector) CollectMetrics() []client.ServerMetric {
 	metrics := []client.ServerMetric{{Name: "virtual_studio_jackd_up", Value: 0}}
 	jackClient, err := initClient("", nil, nil, nil, nil, false)
