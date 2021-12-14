@@ -43,8 +43,6 @@ const (
 )
 
 var (
-	// RecorderPorts are the JACK ports established by the recorder
-	RecorderPorts []*jack.Port
 	// AudioFilenames is an in-memory array of filenames used to perform rotation
 	AudioFilenames []string
 	// FrameBuffer is an in-memory buffer of FLAC frames
@@ -63,6 +61,8 @@ type Recorder struct {
 	JackSampleRate int
 	// JackClient is the client interacting with jackd
 	JackClient *jack.Client
+	// RecorderPorts are the input ports used to scrape audio
+	RecorderPorts []*jack.Port
 	// ClientLock is a mutex used for client-daemon interactions
 	ClientLock sync.Mutex
 	// RawSamplesChan is the channel were raw audio samples are passed through
@@ -88,7 +88,7 @@ func (r *Recorder) processBuffer(nframes uint32) int {
 	}
 	// Read audio data from ports and immediately send to the channel for further processing
 	raw := [][]jack.AudioSample{}
-	for _, port := range RecorderPorts {
+	for _, port := range r.RecorderPorts {
 		samples := port.GetBuffer(nframes)
 		raw = append(raw, samples)
 	}
@@ -100,8 +100,13 @@ func (r *Recorder) processBuffer(nframes uint32) int {
 func (r *Recorder) onShutdown() {
 	r.ClientLock.Lock()
 	defer r.ClientLock.Unlock()
-	r.JackClient, r.JackSampleRate, r.JackBufferSize = nil, 0, 0
-	RecorderPorts, AudioFilenames = nil, nil
+	r.JackClient, r.RecorderPorts, r.JackSampleRate, r.JackBufferSize = nil, nil, 0, 0
+	for _, trash := range AudioFilenames {
+		trashMP3 := pathutil.TrimExt(trash) + ".mp3"
+		os.RemoveAll(trash)
+		os.RemoveAll(trashMP3)
+	}
+	AudioFilenames = nil
 }
 
 // TeardownClient closes the currently active JACK client
@@ -111,8 +116,13 @@ func (r *Recorder) TeardownClient() {
 	if r.JackClient != nil {
 		r.JackClient.Close()
 	}
-	r.JackClient, r.JackSampleRate, r.JackBufferSize = nil, 0, 0
-	RecorderPorts, AudioFilenames = nil, nil
+	r.JackClient, r.RecorderPorts, r.JackSampleRate, r.JackBufferSize = nil, nil, 0, 0
+	for _, trash := range AudioFilenames {
+		trashMP3 := pathutil.TrimExt(trash) + ".mp3"
+		os.RemoveAll(trash)
+		os.RemoveAll(trashMP3)
+	}
+	AudioFilenames = nil
 	log.Info("Teardown of JACK client completed")
 }
 
@@ -129,7 +139,7 @@ func (r *Recorder) SetupClient() {
 		for i := 1; i <= NumRecorderChannels; i++ {
 			portName := fmt.Sprintf("send_%d", i)
 			portIn := client.PortRegister(portName, jack.DEFAULT_AUDIO_TYPE, jack.PortIsInput, 0)
-			RecorderPorts = append(RecorderPorts, portIn)
+			r.RecorderPorts = append(r.RecorderPorts, portIn)
 		}
 	}
 	client, err := initClient(r.Name, nil, r.onShutdown, r.processBuffer, portRegistrationFunc, false)
