@@ -106,7 +106,7 @@ func (r *Recorder) onShutdown() {
 		os.RemoveAll(trash)
 		os.RemoveAll(trashMP3)
 	}
-	AudioFilenames = nil
+	AudioFilenames, FrameBuffer = nil, nil
 }
 
 // TeardownClient closes the currently active JACK client
@@ -122,7 +122,7 @@ func (r *Recorder) TeardownClient() {
 		os.RemoveAll(trash)
 		os.RemoveAll(trashMP3)
 	}
-	AudioFilenames = nil
+	AudioFilenames, FrameBuffer = nil, nil
 	log.Info("Teardown of JACK client completed")
 }
 
@@ -182,8 +182,7 @@ func (r *Recorder) addFrame(audioSamples [][]jack.AudioSample) {
 		go flush(FrameBuffer, sampleRate)
 		FrameBuffer = []frame.Frame{}
 	}
-	nChans := len(audioSamples)
-	subframes := make([]*frame.Subframe, nChans)
+	subframes := make([]*frame.Subframe, NumRecorderChannels)
 	for i := range subframes {
 		subframe := &frame.Subframe{
 			Samples: make([]int32, bufferSize),
