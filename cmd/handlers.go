@@ -94,31 +94,20 @@ func handleListenRequest(w http.ResponseWriter, r *http.Request) {
 	rawHTML := `
 <html>
   <head>
-    <title>Hls.js demo - basic usage</title>
+    <meta charset="utf-8">
+    <title>HLS</title>
+    <link href="https://vjs.zencdn.net/7.17.0/video-js.css" rel="stylesheet" />
   </head>
-  <body style="background-color:black;">
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-	  <center>
-	    <video height="600" id="video" controls></video>
-	  </center>
-	<script>
-	  // Source: https://github.com/dailymotion/hls.js/blob/master/demo/basic-usage.html
-	  var streamAPI = "/stream/playlist.m3u8";
-	  if(Hls.isSupported()) {
-	    var video = document.getElementById('video');
-		var hls = new Hls();
-		hls.loadSource(streamAPI);
-		hls.attachMedia(video);
-		hls.on(Hls.Events.MANIFEST_PARSED,function() {
-		  video.play();
-		});
-	  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-		video.src = streamAPI;
-		video.addEventListener('canplay',function() {
-		  video.play();
-		});
-	  }
-	</script>
+  <body>
+    <script src="https://vjs.zencdn.net/7.17.0/video.min.js"></script>
+    <script src="https://unpkg.com/browse/@videojs/http-streaming@2.12.1/dist/videojs-http-streaming.min.js"></script>
+    <video-js id=vid1 width=600 height=300 class="vjs-default-skin" controls>
+      <source src="/stream/index.m3u8" type="application/x-mpegURL">
+    </video-js>
+    <script>
+      var player = videojs('vid1');
+      player.play();
+    </script>
   </body>
 </html>
 `
@@ -132,7 +121,7 @@ func handleStreamRequest(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, ok := vars["id"]
 	if !ok {
-		id = "playlist.m3u8"
+		id = "index.m3u8"
 	}
 	serveHLS(w, r, MediaDir, id)
 }
@@ -140,11 +129,13 @@ func handleStreamRequest(w http.ResponseWriter, r *http.Request) {
 // serveHLS responds with proper media-encoded responses for HLS streams
 func serveHLS(w http.ResponseWriter, r *http.Request, mediaBase, m3u8Name string) {
 	mediaFile := fmt.Sprintf("%s/%s", mediaBase, m3u8Name)
-	contentType := "audio/mp4"
+	contentType := "video/MP2T"
 	if strings.HasSuffix(mediaFile, ".m3u8") {
 		contentType = "application/x-mpegURL"
-	} else if strings.HasSuffix(mediaFile, ".ts") {
-		contentType = "video/MP2T"
+	} else if strings.HasSuffix(mediaFile, ".mp4") {
+		contentType = "video/mp4"
+	} else if strings.HasSuffix(mediaFile, ".m4s") {
+		contentType = "video/mp4"
 	}
 	http.ServeFile(w, r, mediaFile)
 	w.Header().Set("Content-Type", contentType)
