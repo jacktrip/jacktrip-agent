@@ -14,6 +14,7 @@ require (
 	github.com/mewkiz/pkg v0.0.0-20190919212034-518ade7978e2
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/stretchr/testify v1.7.0
+	github.com/u2takey/ffmpeg-go v0.4.0
 	github.com/xthexder/go-jack v0.0.0-20201026211055-5b07fb071116
 	go.uber.org/zap v1.16.0
 	golang.org/x/sys v0.0.0-20210615035016-665e8c7367d1 // indirect
