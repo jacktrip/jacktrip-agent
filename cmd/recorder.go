@@ -50,9 +50,8 @@ var (
 	AudioFilenames []string
 	// FrameBuffer is an in-memory buffer of FLAC frames
 	FrameBuffer []frame.Frame
-
+	// HLSPlaylistHash is a randomly generated hash to uniquely identify playlists on restart of jackd/jacktrip
 	HLSPlaylistHash string
-	hlsIndex        int
 )
 
 // Recorder listens to audio and records it to disk
@@ -106,12 +105,12 @@ func (r *Recorder) onShutdown() {
 	defer r.ClientLock.Unlock()
 	r.JackClient, r.RecorderPorts, r.JackSampleRate, r.JackBufferSize = nil, nil, 0, 0
 	for _, trash := range AudioFilenames {
-		rotateStaleFile(trash)
+		cleanStaleFile(trash)
 	}
+	cleanStaleFile(filepath.Join(MediaDir, HLSIndex))
+	cleanStaleFile(filepath.Join(MediaDir, "init.mp4"))
 	AudioFilenames, FrameBuffer = nil, nil
-	hlsIndex = 0
 	HLSPlaylistHash = ""
-	os.Remove(filepath.Join(MediaDir, HLSIndex))
 }
 
 // TeardownClient closes the currently active JACK client
@@ -123,12 +122,12 @@ func (r *Recorder) TeardownClient() {
 	}
 	r.JackClient, r.RecorderPorts, r.JackSampleRate, r.JackBufferSize = nil, nil, 0, 0
 	for _, trash := range AudioFilenames {
-		rotateStaleFile(trash)
+		cleanStaleFile(trash)
 	}
+	cleanStaleFile(filepath.Join(MediaDir, HLSIndex))
+	cleanStaleFile(filepath.Join(MediaDir, "init.mp4"))
 	AudioFilenames, FrameBuffer = nil, nil
-	hlsIndex = 0
 	HLSPlaylistHash = ""
-	os.Remove(filepath.Join(MediaDir, HLSIndex))
 	log.Info("Teardown of JACK client completed")
 }
 
@@ -155,8 +154,6 @@ func (r *Recorder) SetupClient() {
 	r.JackClient = client
 	r.JackSampleRate = int(r.JackClient.GetSampleRate())
 	r.JackBufferSize = int(r.JackClient.GetBufferSize())
-	// TODO: Should this be done here?
-	hlsIndex = 0
 	HLSPlaylistHash = GenerateRandomString(8)
 	log.Info("Setup of JACK client completed", "name", r.JackClient.GetName())
 }
@@ -238,7 +235,7 @@ func openFLAC(sampleRate int) (*flac.Encoder, error) {
 	// Keep track of files created and rotate files
 	AudioFilenames = append(AudioFilenames, fh.Name())
 	if len(AudioFilenames) > FileCountLimit {
-		rotateStaleFile(AudioFilenames[0])
+		cleanStaleFile(AudioFilenames[0])
 		AudioFilenames = AudioFilenames[1:]
 	}
 	info := &meta.StreamInfo{
@@ -251,8 +248,8 @@ func openFLAC(sampleRate int) (*flac.Encoder, error) {
 	return flac.NewEncoder(fh, info)
 }
 
-// rotateStaleFile deletes all files that pattern-match the input filename (minus extension)
-func rotateStaleFile(filename string) {
+// cleanStaleFile deletes all files that pattern-match the input filename (minus extension)
+func cleanStaleFile(filename string) {
 	prefix := pathutil.TrimExt(filename)
 	files, _ := filepath.Glob(prefix + "*")
 	for _, f := range files {
@@ -265,29 +262,21 @@ func updateHLSPlaylist() {
 		inputFile := AudioFilenames[len(AudioFilenames)-1]
 		basename := filepath.Base(inputFile)
 		basenameWithoutExt := strings.TrimSuffix(basename, filepath.Ext(basename))
-		/*
-			duplicateFile := fmt.Sprintf("%s-copy.flac", strings.TrimSuffix(inputFile, filepath.Ext(inputFile)))
-			basename := filepath.Base(inputFile)
-			basenameWithoutExt := strings.TrimSuffix(basename, filepath.Ext(basename))
-			flacVerification := exec.Command(
-				"ffmpeg", "-i", inputFile,
-				"-c:a", "flac", duplicateFile,
-			)
-			out, _ := flacVerification.CombinedOutput()
-			fmt.Println(string(out))
-		*/
 		// Execute ffmpeg - all options described here: https://ffmpeg.org/ffmpeg-formats.html
 		cmd := exec.Command(
 			// Call ffmpeg on the most-recently created FLAC file
 			"ffmpeg", "-i", inputFile,
-			// Convert to 320kbps bitrate AAC sample
+			// Convert to FLAC segment
+			//"-map", "0:a", "-c:a:0", "flac",
+			// Convert to 320kbps bitrate AAC segment
 			"-map", "0:a", "-c:a:0", "aac", "-b:a:0", "320k",
+			// Convert to 96kbps bitrate AAC segment
 			//"-map", "0:a", "-c:a:1", "aac", "-b:a:1", "160k",
+			// Convert to 96kbps bitrate AAC segment
 			//"-map", "0:a", "-c:a:2", "aac", "-b:a:2", "96k",
 			// Transcode to HLS-compatible fragmented MP4 files
 			"-f", "hls", "-hls_segment_type", "fmp4", "-hls_init_time", "0",
 			"-hls_playlist_type", "event", "-hls_flags", "delete_segments+append_list+omit_endlist+round_durations",
-			"-hls_fmp4_init_filename", basenameWithoutExt+"-init.mp4",
 			//"-hls_fmp4_init_filename", basenameWithoutExt+"-%v-init.mp4",
 			"-hls_segment_filename", filepath.Join(MediaDir, basenameWithoutExt+"-%v-%03d.m4s"),
 			"-hls_time", strconv.Itoa(FileDuration+1),
@@ -299,39 +288,11 @@ func updateHLSPlaylist() {
 			"-var_stream_map", "a:0", filepath.Join(MediaDir, "playlist_"+HLSPlaylistHash+"_%v.m3u8"),
 			//"-var_stream_map", "a:0 a:1 a:2", filepath.Join(MediaDir, "playlist_%v.m3u8"),
 		)
-		fmt.Println(cmd.String())
-		out, _ := cmd.CombinedOutput()
-		fmt.Println(string(out))
+		cmd.CombinedOutput()
+		// TODO: Check for errors
 		//if err != nil {
-		//	log.Error(err, "Failed ffmpeg transcoding")
+		//	log.Error(err, "Failed ffmpeg transcoding", "output", out)
 		//}
-		// TODO: This library just makes exec.Run calls to ffmpeg...maybe we don't need it
-		/*
-			cmd := ffmpeg.Input(inputFile).Output(
-				filepath.Join(MediaDir, HLSIndex),
-				ffmpeg.KwArgs{
-					"map":                    "0:a",
-					"c:a:0":                  "aac",
-					"b:a:0":                  "320k",
-					"f":                      "hls",
-					"hls_segment_type":       "fmp4",
-					"strftime":               "1",
-					"hls_segment_filename":   filepath.Join(MediaDir, basenameWithoutExt+"-%s.m4s"),
-					"hls_fmp4_init_filename": basenameWithoutExt + "-init.mp4",
-					"start_number":           strconv.Itoa(hlsIndex),
-					"hls_init_time":          "0",
-					"hls_time":               strconv.Itoa(FileDuration + 1),
-					"hls_list_size":          "2",
-					"hls_delete_threshold":   "1",
-					"hls_flags":              "delete_segments+append_list+omit_endlist",
-					"strict":                 "experimental",
-				},
-			)
-			if err := cmd.Run(); err != nil {
-				log.Error(err, "Failed ffmpeg transcoding")
-			}
-		*/
-		hlsIndex += 1
 	}
 }
 
