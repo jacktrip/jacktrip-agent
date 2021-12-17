@@ -290,7 +290,7 @@ func updateHLSPlaylist() {
 			"-hls_fmp4_init_filename", basenameWithoutExt+"-init.mp4",
 			//"-hls_fmp4_init_filename", basenameWithoutExt+"-%v-init.mp4",
 			"-hls_segment_filename", filepath.Join(MediaDir, basenameWithoutExt+"-%v-%03d.m4s"),
-			"-hls_time", strconv.Itoa(FileDuration),
+			"-hls_time", strconv.Itoa(FileDuration+1),
 			// Enable experimental flags for flac->fmp4
 			"-strict", "experimental",
 			// Create master playlist file
