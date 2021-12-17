@@ -18,18 +18,17 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/grafov/m3u8"
 	"github.com/mewkiz/flac"
 	"github.com/mewkiz/flac/frame"
 	"github.com/mewkiz/flac/meta"
 	"github.com/mewkiz/pkg/pathutil"
-	ffmpeg "github.com/u2takey/ffmpeg-go"
 	"github.com/xthexder/go-jack"
 )
 
@@ -51,10 +50,9 @@ var (
 	AudioFilenames []string
 	// FrameBuffer is an in-memory buffer of FLAC frames
 	FrameBuffer []frame.Frame
-	// HLSPlaylist is the HLS metadata client
-	HLSPlaylist *m3u8.MediaPlaylist
 
-	hlsIndex int
+	HLSPlaylistHash string
+	hlsIndex        int
 )
 
 // Recorder listens to audio and records it to disk
@@ -112,6 +110,7 @@ func (r *Recorder) onShutdown() {
 	}
 	AudioFilenames, FrameBuffer = nil, nil
 	hlsIndex = 0
+	HLSPlaylistHash = ""
 	os.Remove(filepath.Join(MediaDir, HLSIndex))
 }
 
@@ -128,6 +127,7 @@ func (r *Recorder) TeardownClient() {
 	}
 	AudioFilenames, FrameBuffer = nil, nil
 	hlsIndex = 0
+	HLSPlaylistHash = ""
 	os.Remove(filepath.Join(MediaDir, HLSIndex))
 	log.Info("Teardown of JACK client completed")
 }
@@ -157,10 +157,7 @@ func (r *Recorder) SetupClient() {
 	r.JackBufferSize = int(r.JackClient.GetBufferSize())
 	// TODO: Should this be done here?
 	hlsIndex = 0
-	HLSPlaylist, err = m3u8.NewMediaPlaylist(10, 20)
-	if err != nil {
-		panic(err)
-	}
+	HLSPlaylistHash = GenerateRandomString(8)
 	log.Info("Setup of JACK client completed", "name", r.JackClient.GetName())
 }
 
@@ -240,7 +237,7 @@ func openFLAC(sampleRate int) (*flac.Encoder, error) {
 	}
 	// Keep track of files created and rotate files
 	AudioFilenames = append(AudioFilenames, fh.Name())
-	if len(AudioFilenames) >= FileCountLimit {
+	if len(AudioFilenames) > FileCountLimit {
 		rotateStaleFile(AudioFilenames[0])
 		AudioFilenames = AudioFilenames[1:]
 	}
@@ -264,35 +261,76 @@ func rotateStaleFile(filename string) {
 }
 
 func updateHLSPlaylist() {
-	if HLSPlaylist != nil {
+	if HLSPlaylistHash != "" {
 		inputFile := AudioFilenames[len(AudioFilenames)-1]
 		basename := filepath.Base(inputFile)
 		basenameWithoutExt := strings.TrimSuffix(basename, filepath.Ext(basename))
-		// TODO: This library just makes exec.Run calls to ffmpeg...maybe we don't need it
-		cmd := ffmpeg.Input(inputFile).Output(
-			filepath.Join(MediaDir, HLSIndex),
-			ffmpeg.KwArgs{
-				"map":                    "0:a",
-				"c:a:0":                  "aac",
-				"b:a:0":                  "320k",
-				"f":                      "hls",
-				"hls_segment_type":       "fmp4",
-				"strftime":               "1",
-				"hls_segment_filename":   filepath.Join(MediaDir, basenameWithoutExt+"-%s.m4s"),
-				"hls_fmp4_init_filename": basenameWithoutExt + "-init.mp4",
-				"start_number":           strconv.Itoa(hlsIndex),
-				"hls_playlist_type":      "event",
-				"hls_init_time":          "0",
-				"hls_time":               strconv.Itoa(FileDuration + 1),
-				"hls_list_size":          "2",
-				"hls_delete_threshold":   "1",
-				"hls_flags":              "delete_segments+append_list+omit_endlist",
-				"strict":                 "experimental",
-			},
+		/*
+			duplicateFile := fmt.Sprintf("%s-copy.flac", strings.TrimSuffix(inputFile, filepath.Ext(inputFile)))
+			basename := filepath.Base(inputFile)
+			basenameWithoutExt := strings.TrimSuffix(basename, filepath.Ext(basename))
+			flacVerification := exec.Command(
+				"ffmpeg", "-i", inputFile,
+				"-c:a", "flac", duplicateFile,
+			)
+			out, _ := flacVerification.CombinedOutput()
+			fmt.Println(string(out))
+		*/
+		// Execute ffmpeg - all options described here: https://ffmpeg.org/ffmpeg-formats.html
+		cmd := exec.Command(
+			// Call ffmpeg on the most-recently created FLAC file
+			"ffmpeg", "-i", inputFile,
+			// Convert to 320kbps bitrate AAC sample
+			"-map", "0:a", "-c:a:0", "aac", "-b:a:0", "320k",
+			//"-map", "0:a", "-c:a:1", "aac", "-b:a:1", "160k",
+			//"-map", "0:a", "-c:a:2", "aac", "-b:a:2", "96k",
+			// Transcode to HLS-compatible fragmented MP4 files
+			"-f", "hls", "-hls_segment_type", "fmp4", "-hls_init_time", "0",
+			"-hls_playlist_type", "event", "-hls_flags", "delete_segments+append_list+omit_endlist+round_durations",
+			"-hls_fmp4_init_filename", basenameWithoutExt+"-init.mp4",
+			//"-hls_fmp4_init_filename", basenameWithoutExt+"-%v-init.mp4",
+			"-hls_segment_filename", filepath.Join(MediaDir, basenameWithoutExt+"-%v-%03d.m4s"),
+			"-hls_time", strconv.Itoa(FileDuration),
+			// Enable experimental flags for flac->fmp4
+			"-strict", "experimental",
+			// Create master playlist file
+			"-master_pl_name", HLSIndex,
+			// Output each bitrate into a unique stream
+			"-var_stream_map", "a:0", filepath.Join(MediaDir, "playlist_"+HLSPlaylistHash+"_%v.m3u8"),
+			//"-var_stream_map", "a:0 a:1 a:2", filepath.Join(MediaDir, "playlist_%v.m3u8"),
 		)
-		if err := cmd.Run(); err != nil {
-			log.Error(err, "Failed ffmpeg transcoding")
-		}
+		fmt.Println(cmd.String())
+		out, _ := cmd.CombinedOutput()
+		fmt.Println(string(out))
+		//if err != nil {
+		//	log.Error(err, "Failed ffmpeg transcoding")
+		//}
+		// TODO: This library just makes exec.Run calls to ffmpeg...maybe we don't need it
+		/*
+			cmd := ffmpeg.Input(inputFile).Output(
+				filepath.Join(MediaDir, HLSIndex),
+				ffmpeg.KwArgs{
+					"map":                    "0:a",
+					"c:a:0":                  "aac",
+					"b:a:0":                  "320k",
+					"f":                      "hls",
+					"hls_segment_type":       "fmp4",
+					"strftime":               "1",
+					"hls_segment_filename":   filepath.Join(MediaDir, basenameWithoutExt+"-%s.m4s"),
+					"hls_fmp4_init_filename": basenameWithoutExt + "-init.mp4",
+					"start_number":           strconv.Itoa(hlsIndex),
+					"hls_init_time":          "0",
+					"hls_time":               strconv.Itoa(FileDuration + 1),
+					"hls_list_size":          "2",
+					"hls_delete_threshold":   "1",
+					"hls_flags":              "delete_segments+append_list+omit_endlist",
+					"strict":                 "experimental",
+				},
+			)
+			if err := cmd.Run(); err != nil {
+				log.Error(err, "Failed ffmpeg transcoding")
+			}
+		*/
 		hlsIndex += 1
 	}
 }

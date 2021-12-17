@@ -100,13 +100,27 @@ func handleListenRequest(w http.ResponseWriter, r *http.Request) {
   </head>
   <body>
     <script src="https://vjs.zencdn.net/7.17.0/video.min.js"></script>
-    <script src="https://unpkg.com/browse/@videojs/http-streaming@2.12.1/dist/videojs-http-streaming.min.js"></script>
-    <video-js id=vid1 width=600 height=300 class="vjs-default-skin" controls>
+    <script src="https://esonderegger.github.io/web-audio-peak-meter/web-audio-peak-meter-2.0.0.min.js"></script>
+    <div id="my-peak-meter" style="width: 20em; height: 5em; margin: 1em 0;"></div>
+    <video-js crossorigin="anonymous" id="vid1" width=600 height=300 class="vjs-default-skin" controls>
       <source src="/stream/index.m3u8" type="application/x-mpegURL">
     </video-js>
     <script>
       var player = videojs('vid1');
       player.play();
+    </script>
+    <script>
+      var myMeterElement = document.getElementById('my-peak-meter');
+      var myAudio = document.getElementsByTagName('video')[0];
+	  console.log(myAudio)
+      var audioCtx = new window.AudioContext();
+      var sourceNode = audioCtx.createMediaElementSource(myAudio);
+      sourceNode.connect(audioCtx.destination);
+      var meterNode = webAudioPeakMeter.createMeterNode(sourceNode, audioCtx);
+      webAudioPeakMeter.createMeter(myMeterElement, meterNode, {});
+      myAudio.addEventListener('play', function() {
+        audioCtx.resume();
+      });
     </script>
   </body>
 </html>
