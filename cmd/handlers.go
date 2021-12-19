@@ -89,47 +89,6 @@ func handlePingRequest(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleListenRequest loads the minimal set of elements for a live audio player
-func handleListenRequest(w http.ResponseWriter, r *http.Request) {
-	rawHTML := `
-<html>
-  <head>
-    <meta charset="utf-8">
-    <title>HLS</title>
-    <link href="https://vjs.zencdn.net/7.17.0/video-js.css" rel="stylesheet" />
-  </head>
-  <body>
-    <script src="https://vjs.zencdn.net/7.17.0/video.min.js"></script>
-    <script src="https://esonderegger.github.io/web-audio-peak-meter/web-audio-peak-meter-2.0.0.min.js"></script>
-    <div id="my-peak-meter" style="width: 20em; height: 5em; margin: 1em 0;"></div>
-    <video-js crossorigin="anonymous" id="vid1" width=600 height=300 class="vjs-default-skin" controls>
-      <source src="/stream/index.m3u8" type="application/x-mpegURL">
-    </video-js>
-    <script>
-      var player = videojs('vid1');
-      player.play();
-    </script>
-    <script>
-      var myMeterElement = document.getElementById('my-peak-meter');
-      var myAudio = document.getElementsByTagName('video')[0];
-	  console.log(myAudio)
-      var audioCtx = new window.AudioContext();
-      var sourceNode = audioCtx.createMediaElementSource(myAudio);
-      sourceNode.connect(audioCtx.destination);
-      var meterNode = webAudioPeakMeter.createMeterNode(sourceNode, audioCtx);
-      webAudioPeakMeter.createMeter(myMeterElement, meterNode, {});
-      myAudio.addEventListener('play', function() {
-        audioCtx.resume();
-      });
-    </script>
-  </body>
-</html>
-`
-	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(rawHTML))
-}
-
 // handleStreamRequest handles the initiation of a HLS stream
 func handleStreamRequest(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -138,6 +97,17 @@ func handleStreamRequest(w http.ResponseWriter, r *http.Request) {
 		id = "index.m3u8"
 	}
 	serveHLS(w, r, MediaDir, id)
+}
+
+// checkHLSOrigin checks for allowed origins in an HLS request
+func checkHLSOrigin(requestOrigin string) bool {
+	allowedOrigins := [...]string{"https://radio.jacktrip.com", "https://app.jacktrip.org", "https://radiotest.jacktrip.com", "https://test.jacktrip.org", "http://localhost:3000"}
+	for _, v := range allowedOrigins {
+		if v == requestOrigin {
+			return true
+		}
+	}
+	return false
 }
 
 // serveHLS responds with proper media-encoded responses for HLS streams
@@ -151,8 +121,14 @@ func serveHLS(w http.ResponseWriter, r *http.Request, mediaBase, m3u8Name string
 	} else if strings.HasSuffix(mediaFile, ".m4s") {
 		contentType = "video/mp4"
 	}
-	http.ServeFile(w, r, mediaFile)
+
+	requestOrigin := r.Header.Get("Origin")
+	if requestOrigin != "" && checkHLSOrigin(requestOrigin) {
+		w.Header().Set("Access-Control-Allow-Origin", r.Header.Get("Origin"))
+	}
+
 	w.Header().Set("Content-Type", contentType)
+	http.ServeFile(w, r, mediaFile)
 }
 
 // OptionsGetOnly responds with a list of allow methods for Get only
