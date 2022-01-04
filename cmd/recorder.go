@@ -267,26 +267,25 @@ func updateHLSPlaylist() {
 			// Call ffmpeg on the most-recently created FLAC file
 			"ffmpeg", "-i", inputFile,
 			// Convert to FLAC segment
-			//"-map", "0:a", "-c:a:0", "flac",
+			"-map", "0:a", "-c:a:0", "flac",
 			// Convert to 320kbps bitrate AAC segment
-			"-map", "0:a", "-c:a:0", "aac", "-b:a:0", "320k",
+			"-map", "0:a", "-c:a:1", "aac", "-b:a:1", "320k",
+			// Convert to 160kbps bitrate AAC segment
+			"-map", "0:a", "-c:a:2", "aac", "-b:a:2", "160k",
 			// Convert to 96kbps bitrate AAC segment
-			//"-map", "0:a", "-c:a:1", "aac", "-b:a:1", "160k",
-			// Convert to 96kbps bitrate AAC segment
-			//"-map", "0:a", "-c:a:2", "aac", "-b:a:2", "96k",
+			"-map", "0:a", "-c:a:3", "aac", "-b:a:3", "96k",
 			// Transcode to HLS-compatible fragmented MP4 files
 			"-f", "hls", "-hls_segment_type", "fmp4", "-hls_init_time", "0",
 			"-hls_playlist_type", "event", "-hls_flags", "delete_segments+append_list+omit_endlist+round_durations",
-			//"-hls_fmp4_init_filename", basenameWithoutExt+"-%v-init.mp4",
-			"-hls_segment_filename", filepath.Join(MediaDir, basenameWithoutExt+"-%v-%03d.m4s"),
+			"-hls_fmp4_init_filename", basenameWithoutExt+"-"+HLSPlaylistHash+"-%v-init.mp4",
+			"-hls_segment_filename", filepath.Join(MediaDir, basenameWithoutExt+"-"+HLSPlaylistHash+"-%v-%03d.m4s"),
 			"-hls_time", strconv.Itoa(FileDuration+1),
 			// Enable experimental flags for flac->fmp4
 			"-strict", "experimental",
 			// Create master playlist file
 			"-master_pl_name", HLSIndex,
 			// Output each bitrate into a unique stream
-			"-var_stream_map", "a:0", filepath.Join(MediaDir, "playlist_"+HLSPlaylistHash+"_%v.m3u8"),
-			//"-var_stream_map", "a:0 a:1 a:2", filepath.Join(MediaDir, "playlist_%v.m3u8"),
+			"-var_stream_map", "a:0,agroup:flac,default:yes a:1,agroup:aac-320k a:2,agroup:aac-160k a:3,agroup:aac-96k", filepath.Join(MediaDir, "playlist_"+HLSPlaylistHash+"-%v.m3u8"),
 		)
 		cmd.CombinedOutput()
 		// TODO: Check for errors
