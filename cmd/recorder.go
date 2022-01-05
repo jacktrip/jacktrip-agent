@@ -126,6 +126,7 @@ func (r *Recorder) TeardownClient() {
 	}
 	cleanStaleFile(filepath.Join(MediaDir, HLSIndex))
 	cleanStaleFile(filepath.Join(MediaDir, "init.mp4"))
+	cleanStaleFile(filepath.Join(MediaDir, "playlist-*.m3u8"))
 	AudioFilenames, FrameBuffer = nil, nil
 	HLSPlaylistHash = ""
 	log.Info("Teardown of JACK client completed")
@@ -266,17 +267,13 @@ func updateHLSPlaylist() {
 		cmd := exec.Command(
 			// Call ffmpeg on the most-recently created FLAC file
 			"ffmpeg", "-i", inputFile,
-			// Convert to FLAC segment
-			"-map", "0:a", "-c:a:0", "flac",
-			// Convert to 320kbps bitrate AAC segment
-			"-map", "0:a", "-c:a:1", "aac", "-b:a:1", "320k",
-			// Convert to 160kbps bitrate AAC segment
-			"-map", "0:a", "-c:a:2", "aac", "-b:a:2", "160k",
-			// Convert to 96kbps bitrate AAC segment
-			"-map", "0:a", "-c:a:3", "aac", "-b:a:3", "96k",
+			// Convert to 1024kbps FLAC segment (ffmpeg defaults to 128kbps)
+			"-map", "0:a", "-c:a:0", "flac", "-b:a:0", "1024k",
+			// Convert to 256kbps bitrate AAC segment
+			"-map", "0:a", "-c:a:1", "aac", "-b:a:1", "256k",
 			// Transcode to HLS-compatible fragmented MP4 files
-			"-f", "hls", "-hls_segment_type", "fmp4", "-hls_init_time", "0",
-			"-hls_playlist_type", "event", "-hls_flags", "delete_segments+append_list+omit_endlist+round_durations",
+			"-f", "hls", "-hls_segment_type", "fmp4", "-hls_init_time", "0", "-hls_list_size", "5",
+			"-hls_flags", "delete_segments+append_list+omit_endlist+round_durations+program_date_time",
 			"-hls_fmp4_init_filename", basenameWithoutExt+"-"+HLSPlaylistHash+"-%v-init.mp4",
 			"-hls_segment_filename", filepath.Join(MediaDir, basenameWithoutExt+"-"+HLSPlaylistHash+"-%v-%03d.m4s"),
 			"-hls_time", strconv.Itoa(FileDuration+1),
@@ -285,13 +282,9 @@ func updateHLSPlaylist() {
 			// Create master playlist file
 			"-master_pl_name", HLSIndex,
 			// Output each bitrate into a unique stream
-			"-var_stream_map", "a:0,agroup:flac,default:yes a:1,agroup:aac-320k a:2,agroup:aac-160k a:3,agroup:aac-96k", filepath.Join(MediaDir, "playlist_"+HLSPlaylistHash+"-%v.m3u8"),
+			"-var_stream_map", "a:0,agroup:flac,default:yes a:1,agroup:aac", filepath.Join(MediaDir, "playlist-%v.m3u8"),
 		)
 		cmd.CombinedOutput()
-		// TODO: Check for errors
-		//if err != nil {
-		//	log.Error(err, "Failed ffmpeg transcoding", "output", out)
-		//}
 	}
 }
 
