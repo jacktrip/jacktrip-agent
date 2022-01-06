@@ -22,6 +22,7 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -52,6 +53,9 @@ const (
 	// JamulusBridgeServiceName is the name of the systemd service for the Jamulus -> JackTrip  bridge
 	JamulusBridgeServiceName = "jamulus-bridge.service"
 
+	// PathToServerCredentials is the path to jacktrip-agent server credentials file
+	PathToServerCredentials = "/etc/default/jacktrip-agent-server"
+
 	// PathToSCLangConfig is the path to SuperCollider sclang service config file
 	PathToSCLangConfig = "/tmp/default/sclang"
 
@@ -80,6 +84,7 @@ const (
 var lastConfig client.AgentConfig
 var ac *AutoConnector
 var recorder *Recorder
+var serverToken string
 
 // runOnServer is used to run jacktrip-agent on an audio cloud server
 func runOnServer(apiOrigin string) {
@@ -96,6 +101,9 @@ func runOnServer(apiOrigin string) {
 
 	// CloudID may be empty if not on a managed cloud server
 	beat := client.ServerHeartbeat{CloudID: os.Getenv("JACKTRIP_CLOUD_ID")}
+
+	// Retrieve server credentials
+	serverToken = findServerCredentials()
 
 	log.Info("Running jacktrip-agent in server mode")
 
@@ -145,6 +153,20 @@ func runOnServer(apiOrigin string) {
 
 	// wait for everything to complete
 	wg.Wait()
+}
+
+// findServerCredentials retrieves the server bearer token if available
+func findServerCredentials() string {
+	var token string
+	if _, err := os.Stat(PathToServerCredentials); !os.IsNotExist(err) {
+		tokenBytes, _ := ioutil.ReadFile(PathToServerCredentials)
+		if err != nil {
+			log.Error(err, "Unable to read server credentials")
+			panic(err)
+		}
+		token = strings.TrimSpace(string(tokenBytes))
+	}
+	return token
 }
 
 // serverConfigUpdateHandler receives and processes server config updates

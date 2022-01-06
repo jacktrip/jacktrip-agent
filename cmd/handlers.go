@@ -89,8 +89,29 @@ func handlePingRequest(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// verifyToken checks the request headers for a valid bearer token
+func verifyToken(w http.ResponseWriter, r *http.Request) bool {
+	if serverToken == "" {
+		return true
+	}
+	reqToken := r.Header.Get("Authorization")
+	if reqToken != "" {
+		splitToken := strings.Split(reqToken, "Bearer ")
+		reqToken = splitToken[1]
+		if serverToken == reqToken {
+			return true
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnauthorized)
+	return false
+}
+
 // handleStreamRequest handles the initiation of a HLS stream
 func handleStreamRequest(w http.ResponseWriter, r *http.Request) {
+	if !verifyToken(w, r) {
+		return
+	}
 	vars := mux.Vars(r)
 	id, ok := vars["id"]
 	if !ok {

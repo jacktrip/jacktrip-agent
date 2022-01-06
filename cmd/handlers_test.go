@@ -40,6 +40,41 @@ func TestRunHTTPServer(t *testing.T) {
 	t.Skip("TODO")
 }
 
+func TestVerifyToken(t *testing.T) {
+	assert := assert.New(t)
+
+	// Test with a server-side token
+	serverToken = "abcd1234"
+	mockResp := httptest.NewRecorder()
+
+	req1 := httptest.NewRequest("GET", "http://example.com/foo", nil)
+	req1.Header.Set("Authorization", "Bearer abcd1234")
+	res1 := verifyToken(mockResp, req1)
+	assert.True(res1)
+
+	req2 := httptest.NewRequest("GET", "http://example.com/foo", nil)
+	req2.Header.Set("Authorization", "Bearer xyz789")
+	res2 := verifyToken(mockResp, req2)
+	assert.False(res2)
+
+	// Test w/o a server-side token
+	serverToken = ""
+
+	req3 := httptest.NewRequest("GET", "http://example.com/foo", nil)
+	req3.Header.Set("Authorization", "Bearer abcd1234")
+	res3 := verifyToken(mockResp, req3)
+	assert.True(res3)
+
+	req4 := httptest.NewRequest("GET", "http://example.com/foo", nil)
+	req4.Header.Set("Authorization", "Bearer xyz789")
+	res4 := verifyToken(mockResp, req4)
+	assert.True(res4)
+
+	req5 := httptest.NewRequest("GET", "http://example.com/foo", nil)
+	res5 := verifyToken(mockResp, req5)
+	assert.True(res5)
+}
+
 func TestHandlePingRequestNoWS(t *testing.T) {
 	assert := assert.New(t)
 	// Instantiate mock response writer and request to exercise method
