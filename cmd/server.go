@@ -53,8 +53,8 @@ const (
 	// JamulusBridgeServiceName is the name of the systemd service for the Jamulus -> JackTrip  bridge
 	JamulusBridgeServiceName = "jamulus-bridge.service"
 
-	// PathToServerCredentials is the path to jacktrip-agent server credentials file
-	PathToServerCredentials = "/etc/default/jacktrip-agent-server"
+	// PathToServerToken is the path to jacktrip-agent server token file
+	PathToServerToken = "/etc/default/jacktrip-agent-token"
 
 	// PathToSCLangConfig is the path to SuperCollider sclang service config file
 	PathToSCLangConfig = "/tmp/default/sclang"
@@ -158,8 +158,8 @@ func runOnServer(apiOrigin string) {
 // findServerCredentials retrieves the server bearer token if available
 func findServerCredentials() string {
 	var token string
-	if _, err := os.Stat(PathToServerCredentials); !os.IsNotExist(err) {
-		tokenBytes, _ := ioutil.ReadFile(PathToServerCredentials)
+	if _, err := os.Stat(PathToServerToken); !os.IsNotExist(err) {
+		tokenBytes, _ := ioutil.ReadFile(PathToServerToken)
 		if err != nil {
 			log.Error(err, "Unable to read server credentials")
 			panic(err)

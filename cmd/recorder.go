@@ -34,9 +34,9 @@ import (
 
 const (
 	// FileDuration is the duration (in seconds) of each audio segment file
-	FileDuration = 10
+	FileDuration = 2
 	// FileCountLimit is the maximum number of audio segment files kept on disk
-	FileCountLimit = 5
+	FileCountLimit = 10
 	// NumRecorderChannels is the number of input channels of the recorder
 	NumRecorderChannels = 2
 	// BitDepth is the bit-resolution used when encoding audio data - changing this involves changes in processBuffer()
@@ -99,27 +99,8 @@ func (r *Recorder) processBuffer(nframes uint32) int {
 	return 0
 }
 
-// onShutdown only runs upon unexpected connection error
-func (r *Recorder) onShutdown() {
-	r.ClientLock.Lock()
-	defer r.ClientLock.Unlock()
-	r.JackClient, r.RecorderPorts, r.JackSampleRate, r.JackBufferSize = nil, nil, 0, 0
-	for _, trash := range AudioFilenames {
-		cleanStaleFile(trash)
-	}
-	cleanStaleFile(filepath.Join(MediaDir, HLSIndex))
-	cleanStaleFile(filepath.Join(MediaDir, "init.mp4"))
-	AudioFilenames, FrameBuffer = nil, nil
-	HLSPlaylistHash = ""
-}
-
-// TeardownClient closes the currently active JACK client
-func (r *Recorder) TeardownClient() {
-	r.ClientLock.Lock()
-	defer r.ClientLock.Unlock()
-	if r.JackClient != nil {
-		r.JackClient.Close()
-	}
+// reset nullifies all things recording-related in a thread-unsafe manner - used when jackd/jacktrip restarts
+func (r *Recorder) reset() {
 	r.JackClient, r.RecorderPorts, r.JackSampleRate, r.JackBufferSize = nil, nil, 0, 0
 	for _, trash := range AudioFilenames {
 		cleanStaleFile(trash)
@@ -130,6 +111,23 @@ func (r *Recorder) TeardownClient() {
 	AudioFilenames, FrameBuffer = nil, nil
 	HLSPlaylistHash = ""
 	log.Info("Teardown of JACK client completed")
+}
+
+// onShutdown only runs upon unexpected connection error
+func (r *Recorder) onShutdown() {
+	r.ClientLock.Lock()
+	defer r.ClientLock.Unlock()
+	r.reset()
+}
+
+// TeardownClient closes the currently active JACK client
+func (r *Recorder) TeardownClient() {
+	r.ClientLock.Lock()
+	defer r.ClientLock.Unlock()
+	if r.JackClient != nil {
+		r.JackClient.Close()
+	}
+	r.reset()
 }
 
 // SetupClient establishes a new client to listen in on JACK ports
@@ -173,10 +171,7 @@ func (r *Recorder) Run(wg *sync.WaitGroup) {
 }
 
 func (r *Recorder) addFrame(audioSamples [][]jack.AudioSample) {
-	// Get current sample rate + buffer size in a thread-safe manner in case the JACK client fails
-	r.ClientLock.Lock()
 	sampleRate, bufferSize := r.JackSampleRate, r.JackBufferSize
-	r.ClientLock.Unlock()
 	if sampleRate <= 0 || bufferSize <= 0 {
 		return
 	}
@@ -267,12 +262,12 @@ func updateHLSPlaylist() {
 		cmd := exec.Command(
 			// Call ffmpeg on the most-recently created FLAC file
 			"ffmpeg", "-i", inputFile,
-			// Convert to 1024kbps FLAC segment (ffmpeg defaults to 128kbps)
-			"-map", "0:a", "-c:a:0", "flac", "-b:a:0", "1024k",
+			// Convert to 1411kbps FLAC segment for lossless: https://www.gearpatrol.com/tech/audio/a36585957/lossless-audio-explained/
+			"-map", "0:a", "-c:a:0", "flac", "-b:a:0", "1411k",
 			// Convert to 256kbps bitrate AAC segment
 			"-map", "0:a", "-c:a:1", "aac", "-b:a:1", "256k",
 			// Transcode to HLS-compatible fragmented MP4 files
-			"-f", "hls", "-hls_segment_type", "fmp4", "-hls_init_time", "0", "-hls_list_size", "5",
+			"-f", "hls", "-hls_segment_type", "fmp4", "-hls_init_time", "0", "-hls_list_size", strconv.Itoa(FileCountLimit),
 			"-hls_flags", "delete_segments+append_list+omit_endlist+round_durations+program_date_time",
 			"-hls_fmp4_init_filename", basenameWithoutExt+"-"+HLSPlaylistHash+"-%v-init.mp4",
 			"-hls_segment_filename", filepath.Join(MediaDir, basenameWithoutExt+"-"+HLSPlaylistHash+"-%v-%03d.m4s"),

@@ -27,6 +27,7 @@ import (
 )
 
 const (
+	// MediaDir is the filepath to where jacktrip-agent stores local media files for recording/streaming
 	MediaDir = "/tmp/vs-media"
 )
 
