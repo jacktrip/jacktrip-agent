@@ -34,7 +34,7 @@ import (
 
 const (
 	// FileDuration is the duration (in seconds) of each audio segment file
-	FileDuration = 2
+	FileDuration = 5
 	// FileCountLimit is the maximum number of audio segment files kept on disk
 	FileCountLimit = 10
 	// NumRecorderChannels is the number of input channels of the recorder
@@ -265,19 +265,20 @@ func updateHLSPlaylist() {
 			// Convert to 1411kbps FLAC segment for lossless: https://www.gearpatrol.com/tech/audio/a36585957/lossless-audio-explained/
 			"-map", "0:a", "-c:a:0", "flac", "-b:a:0", "1411k",
 			// Convert to 256kbps bitrate AAC segment
-			"-map", "0:a", "-c:a:1", "aac", "-b:a:1", "256k",
+			//"-map", "0:a", "-c:a:1", "aac", "-b:a:1", "256k",
 			// Transcode to HLS-compatible fragmented MP4 files
 			"-f", "hls", "-hls_segment_type", "fmp4", "-hls_init_time", "0", "-hls_list_size", strconv.Itoa(FileCountLimit),
 			"-hls_flags", "delete_segments+append_list+omit_endlist+round_durations+program_date_time",
-			"-hls_fmp4_init_filename", basenameWithoutExt+"-"+HLSPlaylistHash+"-%v-init.mp4",
-			"-hls_segment_filename", filepath.Join(MediaDir, basenameWithoutExt+"-"+HLSPlaylistHash+"-%v-%03d.m4s"),
+			"-hls_playlist_type", "event",
+			"-hls_fmp4_init_filename", basenameWithoutExt+"-"+HLSPlaylistHash+"-init.mp4",
+			"-hls_segment_filename", filepath.Join(MediaDir, basenameWithoutExt+"-"+HLSPlaylistHash+"-%03d.m4s"),
 			"-hls_time", strconv.Itoa(FileDuration+1),
 			// Enable experimental flags for flac->fmp4
 			"-strict", "experimental",
 			// Create master playlist file
 			"-master_pl_name", HLSIndex,
 			// Output each bitrate into a unique stream
-			"-var_stream_map", "a:0,agroup:flac,default:yes a:1,agroup:aac", filepath.Join(MediaDir, "playlist-%v.m3u8"),
+			"-var_stream_map", "a:0,agroup:flac,default:yes", filepath.Join(MediaDir, "playlist-%v.m3u8"),
 		)
 		cmd.CombinedOutput()
 	}
