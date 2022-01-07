@@ -22,6 +22,7 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -52,6 +53,9 @@ const (
 	// JamulusBridgeServiceName is the name of the systemd service for the Jamulus -> JackTrip  bridge
 	JamulusBridgeServiceName = "jamulus-bridge.service"
 
+	// PathToServerToken is the path to jacktrip-agent server token file
+	PathToServerToken = "/etc/default/jacktrip-agent-token"
+
 	// PathToSCLangConfig is the path to SuperCollider sclang service config file
 	PathToSCLangConfig = "/tmp/default/sclang"
 
@@ -79,6 +83,8 @@ const (
 
 var lastConfig client.AgentConfig
 var ac *AutoConnector
+var recorder *Recorder
+var serverToken string
 
 // runOnServer is used to run jacktrip-agent on an audio cloud server
 func runOnServer(apiOrigin string) {
@@ -96,6 +102,9 @@ func runOnServer(apiOrigin string) {
 	// CloudID may be empty if not on a managed cloud server
 	beat := client.ServerHeartbeat{CloudID: os.Getenv("JACKTRIP_CLOUD_ID")}
 
+	// Retrieve server credentials
+	serverToken = findServerCredentials()
+
 	log.Info("Running jacktrip-agent in server mode")
 
 	// setup wait group for multiple routines
@@ -104,6 +113,7 @@ func runOnServer(apiOrigin string) {
 	// start HTTP server to respond to pings
 	router := mux.NewRouter()
 	router.HandleFunc("/ping", handlePingRequest).Methods("GET")
+	router.HandleFunc("/stream/{id}", handleStreamRequest).Methods("GET")
 	router.PathPrefix("/").Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		OptionsGetOnly(w, r)
 	})).Methods("OPTIONS")
@@ -136,8 +146,27 @@ func runOnServer(apiOrigin string) {
 	wg.Add(1)
 	go ac.Run(&wg)
 
+	// Start JACK recorder
+	recorder = NewRecorder()
+	wg.Add(1)
+	go recorder.Run(&wg)
+
 	// wait for everything to complete
 	wg.Wait()
+}
+
+// findServerCredentials retrieves the server bearer token if available
+func findServerCredentials() string {
+	var token string
+	if _, err := os.Stat(PathToServerToken); !os.IsNotExist(err) {
+		tokenBytes, _ := ioutil.ReadFile(PathToServerToken)
+		if err != nil {
+			log.Error(err, "Unable to read server credentials")
+			panic(err)
+		}
+		token = strings.TrimSpace(string(tokenBytes))
+	}
+	return token
 }
 
 // serverConfigUpdateHandler receives and processes server config updates
@@ -201,10 +230,12 @@ func handleServerUpdate(config client.AgentConfig) {
 
 		// shutdown or restart managed services
 		ac.TeardownClient()
+		recorder.TeardownClient()
 		restartAllServices(config, true)
 		// jack client will error when the server is only using Jamulus
 		if config.Type != client.Jamulus {
 			ac.SetupClient()
+			recorder.SetupClient()
 		}
 	}
 
@@ -216,7 +247,7 @@ func updateSuperColliderConfigs(config client.AgentConfig) {
 	// write SuperCollider (server) config file
 
 	// calculate maxClients and other variables
-	maxClients := runtime.NumCPU() * MaxClientsPerProcessor
+	maxClients := runtime.NumCPU()*MaxClientsPerProcessor + 1
 	maxClientsEnv := os.Getenv("JACKTRIP_MAX_CLIENTS")
 	if maxClientsEnv != "" {
 		c, err := strconv.Atoi(maxClientsEnv)

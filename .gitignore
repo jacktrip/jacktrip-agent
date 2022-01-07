@@ -2,3 +2,4 @@ jacktrip-agent
 jacktrip-agent-amd64
 jacktrip-agent-arm
 artifacts/
+.DS_Store
