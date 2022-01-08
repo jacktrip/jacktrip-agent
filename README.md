@@ -15,3 +15,11 @@ You'll also need to to run this to execute the registration scripts:
 docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
 
 To build using Golang 1.13 or later, just run `make`
+
+Install this for unit tests:
+
+`go install gotest.tools/gotestsum@latest`
+
+To run unit tests:
+
+`make small-tests`
