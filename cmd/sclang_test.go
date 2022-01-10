@@ -33,11 +33,15 @@ func testMarshal(assert *assert.Assertions, obj SCMarshaller, expected string) {
 	assert.Equal(expected, string(b))
 }
 
-func testSCVariableUnmarshal(assert *assert.Assertions, raw string, name string, value float32) {
-	target := SCVariable{}
+func testSCOptionUnmarshal(assert *assert.Assertions, raw string, expected SCOption) {
+	target := SCOption{}
 	json.Unmarshal([]byte(raw), &target)
-	assert.Equal(name, target.Name)
-	assert.Equal(value, target.Value)
+	assert.Equal(expected.Name, target.Name)
+	assert.Equal(expected.Value, target.Value)
+	assert.Equal(len(expected.Names), len(target.Names))
+	assert.Equal(expected.Names, target.Names)
+	assert.Equal(len(expected.Values), len(target.Values))
+	assert.Equal(expected.Values, target.Values)
 }
 
 func testSCLinkUnmarshal(assert *assert.Assertions, raw string, expected SCLink) {
@@ -70,31 +74,39 @@ func testSCConfigUnmarshal(assert *assert.Assertions, raw string, expected SCCon
 	assert.Equal(expected.UseCustomCode, target.UseCustomCode)
 }
 
-func TestSCVariable(t *testing.T) {
+func TestSCOption(t *testing.T) {
 	assert := assert.New(t)
-	testMarshal(assert, &SCVariable{Name: "zero", Value: 0}, ".zero_(0)")
-	testMarshal(assert, &SCVariable{Name: "answer", Value: 42}, ".answer_(42)")
-	testMarshal(assert, &SCVariable{Name: "float", Value: 0.242}, ".float_(0.242000)")
-	testMarshal(assert, &SCVariable{Name: "negInt", Value: -21}, ".negInt_(-21)")
-	testMarshal(assert, &SCVariable{Name: "negFloat", Value: -4.2}, ".negFloat_(-4.200000)")
-	testSCVariableUnmarshal(assert, `{"varName": "zero", "value": 0}`, "zero", 0)
-	testSCVariableUnmarshal(assert, `{"varName": "answer", "value": 42}`, "answer", 42)
-	testSCVariableUnmarshal(assert, `{"varName": "float", "value": 0.242}`, "float", 0.242)
-	testSCVariableUnmarshal(assert, `{"varName": "negInt", "value": -21}`, "negInt", -21)
-	testSCVariableUnmarshal(assert, `{"varName": "negFloat", "value": -4.2}`, "negFloat", -4.2)
+	testMarshal(assert, &SCOption{Name: "zero", Value: 0}, ".zero_(0)")
+	testMarshal(assert, &SCOption{Name: "answer", Value: 42}, ".answer_(42)")
+	testMarshal(assert, &SCOption{Name: "float", Value: 0.242}, ".float_(0.242000)")
+	testMarshal(assert, &SCOption{Name: "negInt", Value: -21}, ".negInt_(-21)")
+	testMarshal(assert, &SCOption{Name: "negFloat", Value: -4.2}, ".negFloat_(-4.200000)")
+
+	testSCOptionUnmarshal(assert, `{"name": "zero", "value": 0}`, SCOption{Name: "zero", Value: 0})
+	testSCOptionUnmarshal(assert, `{"name": "answer", "value": 42}`, SCOption{Name: "answer", Value: 42})
+	testSCOptionUnmarshal(assert, `{"name": "float", "value": 0.242}`, SCOption{Name: "float", Value: 0.242})
+	testSCOptionUnmarshal(assert, `{"name": "negInt", "value": -21}`, SCOption{Name: "negInt", Value: -21})
+	testSCOptionUnmarshal(assert, `{"name": "negFloat", "value": -4.2}`, SCOption{Name: "negFloat", Value: -4.2})
+
+	v := SCOption{
+		Names:  []string{"zero", "answer", "float"},
+		Values: []float32{0, 42, 0.242},
+	}
+	testMarshal(assert, &v, ".zero_(0).answer_(42).float_(0.242000)")
+	testSCOptionUnmarshal(assert, `{"names": ["zero","answer","float"], "values": [0,42,0.242]}`, v)
 }
 
 func TestSCLink(t *testing.T) {
 	assert := assert.New(t)
 	link := SCLink{
 		Name: "myLink",
-		Options: []SCVariable{
+		Options: []SCOption{
 			{Name: "zero", Value: 0},
 			{Name: "negFloat", Value: -4.2},
 		},
 	}
 	testMarshal(assert, &link, "myLink().zero_(0).negFloat_(-4.200000)")
-	testSCLinkUnmarshal(assert, `{"name": "myLink", "options": [{"varName": "zero", "value": 0}, {"varName": "negFloat", "value": -4.2}]}`, link)
+	testSCLinkUnmarshal(assert, `{"name": "myLink", "options": [{"name": "zero", "value": 0}, {"name": "negFloat", "value": -4.2}]}`, link)
 }
 
 func TestSCSignalChain(t *testing.T) {
@@ -102,19 +114,19 @@ func TestSCSignalChain(t *testing.T) {
 	chain := SCSignalChain{
 		{
 			Name: "myLink",
-			Options: []SCVariable{
+			Options: []SCOption{
 				{Name: "float", Value: 0.242},
 			},
 		},
 		{
 			Name: "yourLink",
-			Options: []SCVariable{
+			Options: []SCOption{
 				{Name: "answer", Value: 42},
 			},
 		},
 	}
 	testMarshal(assert, &chain, "SignalChain(~maxClients)\n.append(myLink().float_(0.242000))\n.append(yourLink().answer_(42))")
-	testSCSignalChainUnmarshal(assert, `[{"name":"myLink","options":[{"varName": "float", "value": 0.242}]},{"name":"yourLink","options":[{"varName": "answer", "value": 42}]}]`, chain)
+	testSCSignalChainUnmarshal(assert, `[{"name":"myLink","options":[{"name": "float", "value": 0.242}]},{"name":"yourLink","options":[{"name": "answer", "value": 42}]}]`, chain)
 }
 
 func TestSCConfigAdvanced(t *testing.T) {
@@ -137,8 +149,8 @@ func TestSCConfigSimple(t *testing.T) {
 	assert := assert.New(t)
 	config := SCConfig{
 		Mixer: "SimpleMixer",
-		MixerOptions: []SCVariable{
-			{"master", 100},
+		MixerOptions: []SCOption{
+			{Name: "master", Value: 100},
 		},
 	}
 
@@ -151,7 +163,7 @@ func TestSCConfigSimple(t *testing.T) {
 ~mixer.connect.start;
 `)
 
-	testSCConfigUnmarshal(assert, `{"mixer":"SimpleMixer","masterOptions":[{"varName":"master","value":100}]}`, config)
+	testSCConfigUnmarshal(assert, `{"mixer":"SimpleMixer","mixerOptions":[{"name":"master","value":100}]}`, config)
 }
 
 func TestSCConfigWithSignalChains(t *testing.T) {
@@ -161,7 +173,7 @@ func TestSCConfigWithSignalChains(t *testing.T) {
 		PreChain: SCSignalChain{
 			{
 				Name: "myLink",
-				Options: []SCVariable{
+				Options: []SCOption{
 					{Name: "float", Value: 0.242},
 				},
 			},
@@ -169,7 +181,7 @@ func TestSCConfigWithSignalChains(t *testing.T) {
 		PostChain: SCSignalChain{
 			{
 				Name: "yourLink",
-				Options: []SCVariable{
+				Options: []SCOption{
 					{Name: "answer", Value: 42},
 				},
 			},
@@ -189,8 +201,8 @@ func TestSCConfigWithSignalChains(t *testing.T) {
 
 	testSCConfigUnmarshal(assert, `{
 		"mixer" : "PersonalMixer",
-		"preChain" : [{"name":"myLink","options":[{"varName": "float", "value": 0.242}]}],
-		"postChain" : [{"name":"yourLink","options":[{"varName": "answer", "value": 42}]}]
+		"preChain" : [{"name":"myLink","options":[{"name": "float", "value": 0.242}]}],
+		"postChain" : [{"name":"yourLink","options":[{"name": "answer", "value": 42}]}]
 	}`, config)
 }
 
@@ -207,7 +219,7 @@ func TestGenerateSuperColliderCodeBackwardsCompatability(t *testing.T) {
 
 func TestGenerateSuperColliderCodeJSON(t *testing.T) {
 	assert := assert.New(t)
-	mixCode := `{"mixer":"SimpleMixer","masterOptions":[{"varName":"master","value":100}]}`
+	mixCode := `{"mixer":"SimpleMixer","mixerOptions":[{"name":"master","value":100}]}`
 	scLangCode := `~preChain = SignalChain(~maxClients);
 
 ~postChain = SignalChain(~maxClients);

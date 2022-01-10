@@ -25,22 +25,51 @@ const (
 	SuperColliderDefaultCode = "SimpleMixer(~maxClients).after({0.exit;}).connect.start;\n"
 )
 
-// SCVariable is a variable used in supercollider configurations
-type SCVariable struct {
-	// Name of the supercollider configuration variable
-	Name string `json:"varName"`
+// SCOption is a supercollider configuration option, which may contain one or more variables
+type SCOption struct {
+	// Name of a specific supercollider configuration variable
+	Name string `json:"name"`
 
-	// Value of the supercollider configuration variable
+	// Value of a specific supercollider configuration variable
 	Value float32 `json:"value"`
+
+	// Names is a slice of supercollider configuration variable names
+	Names []string `json:"names"`
+
+	// Values is a slice of supercollider configuration variable values
+	Values []float32 `json:"values"`
 }
 
-// Marshal is a method of SCVariable that marshals it into a byte array
-func (v *SCVariable) Marshal() ([]byte, error) {
-	if v.Value == float32(int(v.Value)) {
+// marshalSCVariable marshals a single supercollider variable into a string
+func marshalSCVariable(name string, value float32) string {
+	if value == float32(int(value)) {
 		// don't include decimal if it's zero
-		return []byte(fmt.Sprintf(".%s_(%d)", v.Name, int(v.Value))), nil
+		return fmt.Sprintf(".%s_(%d)", name, int(value))
 	}
-	return []byte(fmt.Sprintf(".%s_(%f)", v.Name, v.Value)), nil
+	return fmt.Sprintf(".%s_(%f)", name, value)
+}
+
+// Marshal is a method of SCOption that marshals it into a byte array
+func (v *SCOption) Marshal() ([]byte, error) {
+	var sb strings.Builder
+
+	if v.Name != "" {
+		if _, err := sb.WriteString(marshalSCVariable(v.Name, v.Value)); err != nil {
+			return nil, err
+		}
+	}
+
+	for n := range v.Names {
+		var myValue float32
+		if len(v.Values) > n {
+			myValue = v.Values[n]
+		}
+		if _, err := sb.WriteString(marshalSCVariable(v.Names[n], myValue)); err != nil {
+			return nil, err
+		}
+	}
+
+	return []byte(sb.String()), nil
 }
 
 // SCLink is a singal chain processing link used in supercollider configurations
@@ -49,7 +78,7 @@ type SCLink struct {
 	Name string `json:"name"`
 
 	// Options for configuration of Link
-	Options []SCVariable `json:"options"`
+	Options []SCOption `json:"options"`
 }
 
 // Marshal is a method of SCLang that marshals it into a byte array
@@ -97,7 +126,7 @@ type SCConfig struct {
 	Mixer string `json:"mixer"`
 
 	// MixerOptions are the mixer configuration options
-	MixerOptions []SCVariable `json:"masterOptions"`
+	MixerOptions []SCOption `json:"mixerOptions"`
 
 	// PreChain is used to process audio before mixing down to 2 channels
 	PreChain SCSignalChain `json:"preChain"`
