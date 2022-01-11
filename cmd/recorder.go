@@ -254,7 +254,7 @@ func cleanStaleFile(filename string) {
 	}
 }
 
-func transcode(inputFile, encoding, bitrate string, index int) {
+func transcode(inputFile, encoding, bitrate string) {
 	basename := filepath.Base(inputFile)
 	basenameWithoutExt := strings.TrimSuffix(basename, filepath.Ext(basename))
 	outputFile := fmt.Sprintf("%s/%s-%s-%%03d.m4s", MediaDir, basenameWithoutExt, bitrate)
@@ -266,15 +266,15 @@ func transcode(inputFile, encoding, bitrate string, index int) {
 		// Transcode to HLS-compatible fragmented MP4 files
 		"-f", "hls", "-hls_segment_type", "fmp4",
 		"-hls_init_time", "0", "-hls_time", strconv.Itoa(FileDuration+1),
-		//"-hls_list_size", strconv.Itoa(FileCountLimit),
 		"-hls_flags", "delete_segments+append_list+omit_endlist+round_durations+program_date_time",
 		"-hls_playlist_type", "event",
+		//"-hls_list_size", strconv.Itoa(FileCountLimit),
 		"-hls_fmp4_init_filename", fmt.Sprintf("%s-%s-init.mp4", basenameWithoutExt, bitrate),
 		"-hls_segment_filename", outputFile,
 		// Enable experimental flags for flac->fmp4
 		"-strict", "experimental",
 		// Create playlist file
-		fmt.Sprintf("%s/playlist-%d.m3u8", MediaDir, index),
+		fmt.Sprintf("%s/playlist-%s.m3u8", MediaDir, bitrate),
 	)
 	cmd.CombinedOutput()
 }
@@ -284,15 +284,15 @@ func updateHLSPlaylist() {
 		// Each transcode call writes/updates its own playlist file, while the master playlist is updated once here
 		if len(HLSMasterPlaylist.Variants) != 2 {
 			// These playlist names/variant params should match the ones in transcode()
-			HLSMasterPlaylist.Append("playlist-0.m3u8", nil, m3u8.VariantParams{ProgramId: 1, Bandwidth: 192000, Codecs: "mp4a.40.2"})
-			HLSMasterPlaylist.Append("playlist-1.m3u8", nil, m3u8.VariantParams{ProgramId: 1, Bandwidth: 1411000})
+			HLSMasterPlaylist.Append("playlist-192k.m3u8", nil, m3u8.VariantParams{ProgramId: 1, Bandwidth: 192000, Codecs: "mp4a.40.2"})
+			HLSMasterPlaylist.Append("playlist-1411k.m3u8", nil, m3u8.VariantParams{ProgramId: 1, Bandwidth: 1411000})
 			os.WriteFile(fmt.Sprintf("%s/index.m3u8", MediaDir), HLSMasterPlaylist.Encode().Bytes(), 0644)
 		}
 		inputFile := AudioFilenames[len(AudioFilenames)-1]
 		// Convert to 192k AAC segment per spec: https://developer.apple.com/documentation/http_live_streaming/hls_authoring_specification_for_apple_devices
-		transcode(inputFile, "aac", "192k", 0)
+		transcode(inputFile, "aac", "192k")
 		// Convert to 1411kbps FLAC segment for lossless: https://www.gearpatrol.com/tech/audio/a36585957/lossless-audio-explained/
-		transcode(inputFile, "flac", "1411k", 1)
+		transcode(inputFile, "flac", "1411k")
 	}
 }
 
