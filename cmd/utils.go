@@ -27,8 +27,6 @@ const (
 	RetryBackoffFactor = 2
 	// RetryBackoffMax sets the maximum wait duration between retry attempts
 	RetryBackoffMax = 10000 // milliseconds
-	// Alphanumerics is the set of alphebetic + numeric characters
-	Alphanumerics = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 )
 
 func min(x, y int) int {
@@ -36,15 +34,6 @@ func min(x, y int) int {
 		return x
 	}
 	return y
-}
-
-// GenerateRandomString generates a string of n random alphanumeric characters
-func GenerateRandomString(n int) string {
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = Alphanumerics[rand.Intn(len(Alphanumerics))]
-	}
-	return string(b)
 }
 
 func exponentialBackoffSleep(iteration int) {
