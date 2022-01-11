@@ -31,22 +31,36 @@ type SCOption struct {
 	Name string `json:"name"`
 
 	// Value of a specific supercollider configuration variable
-	Value float32 `json:"value"`
+	Value interface{} `json:"value"`
 
 	// Names is a slice of supercollider configuration variable names
 	Names []string `json:"names"`
 
 	// Values is a slice of supercollider configuration variable values
-	Values []float32 `json:"values"`
+	Values []interface{} `json:"values"`
 }
 
 // marshalSCVariable marshals a single supercollider variable into a string
-func marshalSCVariable(name string, value float32) string {
-	if value == float32(int(value)) {
-		// don't include decimal if it's zero
-		return fmt.Sprintf(".%s_(%d)", name, int(value))
+func marshalSCVariable(name string, value interface{}) string {
+	var result string
+
+	switch v := value.(type) {
+	case int:
+		result = fmt.Sprintf(".%s_(%d)", name, int(v))
+	case float64:
+		if v == float64(int(v)) {
+			// don't include decimal if it's zero
+			result = fmt.Sprintf(".%s_(%d)", name, int(v))
+		} else {
+			result = fmt.Sprintf(".%s_(%f)", name, v)
+		}
+	case string:
+		result = fmt.Sprintf(".%s_(\"%s\")", name, v)
+	default:
+		result = fmt.Sprintf(".%s_(%x)", name, v)
 	}
-	return fmt.Sprintf(".%s_(%f)", name, value)
+
+	return result
 }
 
 // Marshal is a method of SCOption that marshals it into a byte array
@@ -60,7 +74,7 @@ func (v *SCOption) Marshal() ([]byte, error) {
 	}
 
 	for n := range v.Names {
-		var myValue float32
+		var myValue interface{}
 		if len(v.Values) > n {
 			myValue = v.Values[n]
 		}
@@ -206,7 +220,7 @@ func generateSuperColliderCode(mixCode string) string {
 	}
 
 	if err = json.Unmarshal([]byte(mixCode), &config); err != nil {
-		log.Info("Failed to parse mixCode as JSON; using as-is for backwards compatability")
+		log.Error(err, "Failed to parse mixCode as JSON; using as-is for backwards compatability")
 		return mixCode
 	}
 
