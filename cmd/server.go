@@ -1,4 +1,4 @@
-// Copyright 2020-2021 JackTrip Labs, Inc.
+// Copyright 2020-2022 JackTrip Labs, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -315,7 +315,8 @@ fork {
 	scStartup := fmt.Sprintf(`~maxClients = %d;
 ~inputChannelsPerClient = 2;
 ~outputChannelsPerClient = 2;
-%s`, maxClients, config.MixCode)
+
+%s`, maxClients, generateSuperColliderCode(config.MixCode))
 	err = ioutil.WriteFile(PathToSuperColliderStartupFile, []byte(scStartup), 0644)
 	if err != nil {
 		log.Error(err, "Failed to save SuperCollider startup file", "path", PathToSuperColliderStartupFile)
