@@ -314,46 +314,34 @@ func constructPrimaryPlaylist(playlist *m3u8.MasterPlaylist) {
 }
 
 // constructTranscodingArgs builds the ffmpeg arguments used for transcoding
-func constructTranscodingArgs(sampleFilepath string) []string {
+func constructTranscodingArgs(sampleFilepath, codec, bps string) []string {
 	fname := getFilename(sampleFilepath)
-	// Call ffmpeg using the sampleFile input, ex: `ffmpeg -hide_banner -i raw.flac`
-	ffmpegArgs := []string{"-hide_banner", "-i", sampleFilepath}
-	for i, out := range HLSSupportedOutputs {
-		// Target output encoding + bitrate, ex: `-map 0:a -c:a:0 aac -b:a:0 192k`
-		dest := []string{
-			"-map", "0:a",
-			fmt.Sprintf("-c:a:%d", i),
-			out["codec"],
-			fmt.Sprintf("-b:a:%d", i),
-			out["avgBps"],
-		}
-		ffmpegArgs = append(ffmpegArgs, dest...)
-	}
+	// Call ffmpeg using the sampleFile input, ex: `ffmpeg -hide_banner -i raw.flac -c:a aac -b:a 192k`
+	ffmpegArgs := []string{"-hide_banner", "-i", sampleFilepath, "-c:a", codec, "-b:a", bps}
 	// Add HLS-specific output options
 	ffmpegArgs = append(ffmpegArgs, []string{
 		// Transcode to HLS-compatible fragmented MP4 files
 		"-f", "hls", "-hls_segment_type", "fmp4",
+		// Enable experimental flags for flac->fmp4
+		"-strict", "experimental",
 		"-hls_time", strconv.Itoa(FileDuration + 1),
 		"-hls_list_size", strconv.Itoa(HLSWindowSize),
 		"-hls_flags", "delete_segments+append_list+round_durations+omit_endlist+program_date_time",
-		"-hls_fmp4_init_filename", fmt.Sprintf("playlist-%s-%%v-init.mp4", HLSPlaylistHash),
-		"-hls_segment_filename", fmt.Sprintf("%s/%s-%%v-%%03d.m4s", MediaDir, fname),
-		// Enable experimental flags for flac->fmp4
-		"-strict", "experimental",
-		// These playlist names are required but unused because we need to craft the manifest ourselves
-		"-master_pl_name", "hiddenstream-index.m3u8",
-		"-var_stream_map", "a:0 a:1", filepath.Join(MediaDir, "hiddenstream-%v.m3u8"),
+		"-hls_fmp4_init_filename", fmt.Sprintf("init-%s-%s.mp4", HLSPlaylistHash, bps),
+		"-hls_segment_filename", fmt.Sprintf("%s/%s-%s-%%03d.m4s", MediaDir, fname, bps),
+		// file output is a required arg but unused because we craft the manifest ourselves
+		fmt.Sprintf("%s/hiddenstream-%s.m3u8", MediaDir, bps),
 	}...)
 	return ffmpegArgs
 }
 
 // insertNewMedia pushes a new media segment to a designated playlist
-func insertNewMedia(plist *m3u8.MediaPlaylist, sampleFilepath string, index int) {
+func insertNewMedia(plist *m3u8.MediaPlaylist, sampleFilepath string, bps string) {
 	fname := getFilename(sampleFilepath)
-	uri := fmt.Sprintf("%s-%d-%03d.m4s", fname, index, HLSIndex)
+	uri := fmt.Sprintf("%s-%s-%03d.m4s", fname, bps, HLSIndex)
 	// When the playlist has reached capacity, manually shift some metadata to account for changes
 	if plist.Count() == 0 {
-		initMP4 := fmt.Sprintf("playlist-%s-%d-init.mp4", HLSPlaylistHash, index)
+		initMP4 := fmt.Sprintf("init-%s-%s.mp4", HLSPlaylistHash, bps)
 		plist.SetDefaultMap(initMP4, 0, 0)
 	}
 	// Insert new segment into playlist; add discontinuity because technically it's a distinct file
@@ -375,15 +363,19 @@ func updateHLSPlaylist() {
 	}
 	// Transcode raw sample into proper HLS-compatible containers
 	newSample := AudioFilenames[len(AudioFilenames)-1]
-	ffmpegArgs := constructTranscodingArgs(newSample)
-	cmd := exec.Command("ffmpeg", ffmpegArgs...)
-	cmd.CombinedOutput()
 	// Update each media playlist with the newest segment
 	for i, out := range HLSSupportedOutputs {
+		bps := out["avgBps"]
+		ffmpegArgs := constructTranscodingArgs(newSample, out["codec"], bps)
+		cmd := exec.Command("ffmpeg", ffmpegArgs...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			fmt.Println(string(out))
+		}
 		plist := HLSMediaPlaylists[i]
-		insertNewMedia(plist, newSample, i)
-		plistFilename := fmt.Sprintf(playlistNameTmpl, HLSPlaylistHash, out["avgBps"])
-		os.WriteFile(filepath.Join(MediaDir, plistFilename), plist.Encode().Bytes(), 0644)
+		insertNewMedia(plist, newSample, bps)
+		filename := fmt.Sprintf(playlistNameTmpl, HLSPlaylistHash, bps)
+		os.WriteFile(filepath.Join(MediaDir, filename), plist.Encode().Bytes(), 0644)
 	}
 	// Increment global counter for tracking purposes
 	HLSIndex++
