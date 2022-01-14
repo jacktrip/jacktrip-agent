@@ -54,32 +54,36 @@ func TestConstructTranscodingArgs(t *testing.T) {
 	assert := assert.New(t)
 
 	HLSPlaylistHash = "abcd1234"
-	args := constructTranscodingArgs("/home/bmanilow/copacabana.flac")
-	assert.Equal(42, len(args))
-	assert.Contains(args, "/home/bmanilow/copacabana.flac")
-	assert.Contains(args, "-c:a:0")
-	assert.Contains(args, "-c:a:1")
-	assert.Contains(args, "-c:a:2")
-	assert.Contains(args, "-b:a:0")
-	assert.Contains(args, "-b:a:1")
-	assert.Contains(args, "-b:a:2")
-	assert.Contains(args, "aac")
-	assert.Contains(args, "flac")
-	assert.Contains(args, "192k")
-	assert.Contains(args, "320k")
-	assert.Contains(args, "1411k")
-	assert.Contains(args, "-f")
-	assert.Contains(args, "hls")
-	assert.Contains(args, "-hls_segment_type")
-	assert.Contains(args, "fmp4")
-	assert.Contains(args, "-hls_flags")
-	assert.Contains(args, "delete_segments+append_list+round_durations+omit_endlist+program_date_time")
-	assert.Contains(args, "-hls_fmp4_init_filename")
-	assert.Contains(args, "playlist-abcd1234-%v-init.mp4")
-	assert.Contains(args, "-hls_segment_filename")
-	assert.Contains(args, "/tmp/vs-media/copacabana-%v-%03d.m4s")
-	assert.Contains(args, "-strict")
-	assert.Contains(args, "experimental")
+	args1 := constructTranscodingArgs("/home/bmanilow/copacabana.flac", "aac", "320k")
+	expected1 := []string{
+		"-hide_banner", "-i", "/home/bmanilow/copacabana.flac",
+		"-c:a", "aac", "-b:a", "320k",
+		"-f", "hls", "-hls_segment_type", "fmp4",
+		"-strict", "experimental",
+		"-hls_time", "6",
+		"-hls_list_size", "5",
+		"-hls_flags", "delete_segments+append_list+round_durations+omit_endlist+program_date_time",
+		"-hls_fmp4_init_filename", "init-abcd1234-320k.mp4",
+		"-hls_segment_filename", "/tmp/vs-media/copacabana-320k-%03d.m4s",
+		"/tmp/vs-media/hiddenstream-320k.m3u8",
+	}
+	assert.Equal(expected1, args1)
+
+	HLSPlaylistHash = "xyz8990"
+	args2 := constructTranscodingArgs("/home/bmanilow/let-the-bodies-hit-the-floor.flac", "flac", "1411k")
+	expected2 := []string{
+		"-hide_banner", "-i", "/home/bmanilow/let-the-bodies-hit-the-floor.flac",
+		"-c:a", "flac", "-b:a", "1411k",
+		"-f", "hls", "-hls_segment_type", "fmp4",
+		"-strict", "experimental",
+		"-hls_time", "6",
+		"-hls_list_size", "5",
+		"-hls_flags", "delete_segments+append_list+round_durations+omit_endlist+program_date_time",
+		"-hls_fmp4_init_filename", "init-xyz8990-1411k.mp4",
+		"-hls_segment_filename", "/tmp/vs-media/let-the-bodies-hit-the-floor-1411k-%03d.m4s",
+		"/tmp/vs-media/hiddenstream-1411k.m3u8",
+	}
+	assert.Equal(expected2, args2)
 }
 
 func TestInsertNewMedia(t *testing.T) {
@@ -90,13 +94,13 @@ func TestInsertNewMedia(t *testing.T) {
 	m1, _ := m3u8.NewMediaPlaylist(3, 3)
 
 	HLSIndex = 0
-	insertNewMedia(m1, "/home/bmanilow/copacabana.flac", 1)
+	insertNewMedia(m1, "/home/bmanilow/copacabana.flac", "192k")
 	// At this point, there should be 3 segments but the last 2 are nil
 	assert.Equal(3, len(m1.Segments))
 	assert.NotNil(m1.Segments[0])
 	assert.Nil(m1.Segments[1])
 	assert.Nil(m1.Segments[2])
-	assert.Equal("copacabana-1-000.m4s", m1.Segments[0].URI)
+	assert.Equal("copacabana-192k-000.m4s", m1.Segments[0].URI)
 	assert.Equal(5.0, m1.Segments[0].Duration)
 	assert.Equal(true, m1.Segments[0].Discontinuity)
 	m1String = m1.String()
@@ -104,19 +108,19 @@ func TestInsertNewMedia(t *testing.T) {
 	assert.NotContains(m1String, "#EXT-X-DISCONTINUITY-SEQUENCE")
 	assert.Contains(m1String, "#EXT-X-TARGETDURATION:5")
 	assert.Contains(m1String, "#EXT-X-DISCONTINUITY")
-	assert.Contains(m1String, `#EXT-X-MAP:URI="playlist-xyz890-1-init.mp4"`)
+	assert.Contains(m1String, `#EXT-X-MAP:URI="init-xyz890-192k.mp4"`)
 	assert.Contains(m1String, "#EXTINF:5.000,")
-	assert.Contains(m1String, "copacabana-1-000.m4s")
+	assert.Contains(m1String, "copacabana-192k-000.m4s")
 
 	HLSIndex = 1
-	insertNewMedia(m1, "/home/bmanilow/mandy.flac", 0)
+	insertNewMedia(m1, "/home/bmanilow/mandy.flac", "320k")
 	// At this point, there should be 3 segments but the last 1 is nil; first segment is preserved
 	assert.Equal(3, len(m1.Segments))
 	assert.NotNil(m1.Segments[0])
 	assert.NotNil(m1.Segments[1])
 	assert.Nil(m1.Segments[2])
-	assert.Equal("copacabana-1-000.m4s", m1.Segments[0].URI)
-	assert.Equal("mandy-0-001.m4s", m1.Segments[1].URI)
+	assert.Equal("copacabana-192k-000.m4s", m1.Segments[0].URI)
+	assert.Equal("mandy-320k-001.m4s", m1.Segments[1].URI)
 	assert.Equal(5.0, m1.Segments[0].Duration)
 	assert.Equal(true, m1.Segments[0].Discontinuity)
 	assert.Equal(5.0, m1.Segments[1].Duration)
@@ -126,21 +130,21 @@ func TestInsertNewMedia(t *testing.T) {
 	assert.NotContains(m1String, "#EXT-X-DISCONTINUITY-SEQUENCE")
 	assert.Contains(m1String, "#EXT-X-TARGETDURATION:5")
 	assert.Contains(m1String, "#EXT-X-DISCONTINUITY")
-	assert.Contains(m1String, `#EXT-X-MAP:URI="playlist-xyz890-1-init.mp4"`)
+	assert.Contains(m1String, `#EXT-X-MAP:URI="init-xyz890-192k.mp4"`)
 	assert.Contains(m1String, "#EXTINF:5.000,")
-	assert.Contains(m1String, "copacabana-1-000.m4s")
-	assert.Contains(m1String, "mandy-0-001.m4s")
+	assert.Contains(m1String, "copacabana-192k-000.m4s")
+	assert.Contains(m1String, "mandy-320k-001.m4s")
 
 	HLSIndex = 2
-	insertNewMedia(m1, "/home/bmanilow/iwritethesongs.flac", 3)
+	insertNewMedia(m1, "/home/bmanilow/i-write-the-songs.flac", "1500k")
 	// At this point, there should be 3 active segments
 	assert.Equal(3, len(m1.Segments))
 	assert.NotNil(m1.Segments[0])
 	assert.NotNil(m1.Segments[1])
 	assert.NotNil(m1.Segments[2])
-	assert.Equal("copacabana-1-000.m4s", m1.Segments[0].URI)
-	assert.Equal("mandy-0-001.m4s", m1.Segments[1].URI)
-	assert.Equal("iwritethesongs-3-002.m4s", m1.Segments[2].URI)
+	assert.Equal("copacabana-192k-000.m4s", m1.Segments[0].URI)
+	assert.Equal("mandy-320k-001.m4s", m1.Segments[1].URI)
+	assert.Equal("i-write-the-songs-1500k-002.m4s", m1.Segments[2].URI)
 	assert.Equal(5.0, m1.Segments[0].Duration)
 	assert.Equal(true, m1.Segments[0].Discontinuity)
 	assert.Equal(5.0, m1.Segments[1].Duration)
@@ -152,23 +156,23 @@ func TestInsertNewMedia(t *testing.T) {
 	assert.NotContains(m1String, "#EXT-X-DISCONTINUITY-SEQUENCE")
 	assert.Contains(m1String, "#EXT-X-TARGETDURATION:5")
 	assert.Contains(m1String, "#EXT-X-DISCONTINUITY")
-	assert.Contains(m1String, `#EXT-X-MAP:URI="playlist-xyz890-1-init.mp4"`)
+	assert.Contains(m1String, `#EXT-X-MAP:URI="init-xyz890-192k.mp4"`)
 	assert.Contains(m1String, "#EXTINF:5.000,")
-	assert.Contains(m1String, "copacabana-1-000.m4s")
-	assert.Contains(m1String, "mandy-0-001.m4s")
-	assert.Contains(m1String, "iwritethesongs-3-002.m4s")
+	assert.Contains(m1String, "copacabana-192k-000.m4s")
+	assert.Contains(m1String, "mandy-320k-001.m4s")
+	assert.Contains(m1String, "i-write-the-songs-1500k-002.m4s")
 
 	HLSIndex = 3
-	insertNewMedia(m1, "/home/bmanilow/somewhereinthenight.flac", 848)
+	insertNewMedia(m1, "/home/bmanilow/somewhereinthenight.flac", "1411k")
 	// At this point, there should be 3 active segments but the first one should be evicted
 	// Also EXT-X-DISCONTINUITY-SEQUENCE appears and EXT-X-MEDIA-SEQUENCE is incremented
 	assert.Equal(3, len(m1.Segments))
 	assert.NotNil(m1.Segments[0])
 	assert.NotNil(m1.Segments[1])
 	assert.NotNil(m1.Segments[2])
-	assert.Equal("somewhereinthenight-848-003.m4s", m1.Segments[0].URI)
-	assert.Equal("mandy-0-001.m4s", m1.Segments[1].URI)
-	assert.Equal("iwritethesongs-3-002.m4s", m1.Segments[2].URI)
+	assert.Equal("somewhereinthenight-1411k-003.m4s", m1.Segments[0].URI)
+	assert.Equal("mandy-320k-001.m4s", m1.Segments[1].URI)
+	assert.Equal("i-write-the-songs-1500k-002.m4s", m1.Segments[2].URI)
 	assert.Equal(5.0, m1.Segments[0].Duration)
 	assert.Equal(true, m1.Segments[0].Discontinuity)
 	assert.Equal(5.0, m1.Segments[1].Duration)
@@ -180,10 +184,10 @@ func TestInsertNewMedia(t *testing.T) {
 	assert.Contains(m1String, "#EXT-X-DISCONTINUITY-SEQUENCE:1")
 	assert.Contains(m1String, "#EXT-X-TARGETDURATION:5")
 	assert.Contains(m1String, "#EXT-X-DISCONTINUITY")
-	assert.Contains(m1String, `#EXT-X-MAP:URI="playlist-xyz890-1-init.mp4"`)
+	assert.Contains(m1String, `#EXT-X-MAP:URI="init-xyz890-192k.mp4"`)
 	assert.Contains(m1String, "#EXTINF:5.000,")
-	assert.NotContains(m1String, "copacabana-1-000.m4s")
-	assert.Contains(m1String, "somewhereinthenight-848-003.m4s")
-	assert.Contains(m1String, "mandy-0-001.m4s")
-	assert.Contains(m1String, "iwritethesongs-3-002.m4s")
+	assert.NotContains(m1String, "copacabana-192k-000.m4s")
+	assert.Contains(m1String, "somewhereinthenight-1411k-003.m4s")
+	assert.Contains(m1String, "mandy-320k-001.m4s")
+	assert.Contains(m1String, "i-write-the-songs-1500k-002.m4s")
 }

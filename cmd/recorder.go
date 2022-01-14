@@ -317,13 +317,14 @@ func constructPrimaryPlaylist(playlist *m3u8.MasterPlaylist) {
 func constructTranscodingArgs(sampleFilepath, codec, bps string) []string {
 	fname := getFilename(sampleFilepath)
 	// Call ffmpeg using the sampleFile input, ex: `ffmpeg -hide_banner -i raw.flac -c:a aac -b:a 192k`
-	ffmpegArgs := []string{"-hide_banner", "-i", sampleFilepath, "-c:a", codec, "-b:a", bps}
-	// Add HLS-specific output options
-	ffmpegArgs = append(ffmpegArgs, []string{
+	return []string{
+		"-hide_banner", "-i", sampleFilepath,
+		"-c:a", codec, "-b:a", bps,
 		// Transcode to HLS-compatible fragmented MP4 files
 		"-f", "hls", "-hls_segment_type", "fmp4",
 		// Enable experimental flags for flac->fmp4
 		"-strict", "experimental",
+		// Add HLS-specific output options
 		"-hls_time", strconv.Itoa(FileDuration + 1),
 		"-hls_list_size", strconv.Itoa(HLSWindowSize),
 		"-hls_flags", "delete_segments+append_list+round_durations+omit_endlist+program_date_time",
@@ -331,12 +332,11 @@ func constructTranscodingArgs(sampleFilepath, codec, bps string) []string {
 		"-hls_segment_filename", fmt.Sprintf("%s/%s-%s-%%03d.m4s", MediaDir, fname, bps),
 		// file output is a required arg but unused because we craft the manifest ourselves
 		fmt.Sprintf("%s/hiddenstream-%s.m3u8", MediaDir, bps),
-	}...)
-	return ffmpegArgs
+	}
 }
 
 // insertNewMedia pushes a new media segment to a designated playlist
-func insertNewMedia(plist *m3u8.MediaPlaylist, sampleFilepath string, bps string) {
+func insertNewMedia(plist *m3u8.MediaPlaylist, sampleFilepath, bps string) {
 	fname := getFilename(sampleFilepath)
 	uri := fmt.Sprintf("%s-%s-%03d.m4s", fname, bps, HLSIndex)
 	// When the playlist has reached capacity, manually shift some metadata to account for changes
