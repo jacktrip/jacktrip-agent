@@ -166,6 +166,11 @@ func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm 
 	firstHeartbeat := true
 
 	for {
+		// reconcile device version to handle first-time startup where patch files may be missing
+		if beat.Version == "" {
+			beat.Version = getPatchVersion()
+		}
+
 		if currentDeviceConfig.Enabled && currentDeviceConfig.Host != "" {
 			// device is connected to an audio server
 
