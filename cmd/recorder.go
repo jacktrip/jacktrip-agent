@@ -29,7 +29,6 @@ import (
 	"github.com/mewkiz/flac"
 	"github.com/mewkiz/flac/frame"
 	"github.com/mewkiz/flac/meta"
-	"github.com/mewkiz/pkg/pathutil"
 	"github.com/xthexder/go-jack"
 )
 
@@ -42,8 +41,10 @@ const (
 	NumRecorderChannels = 2
 	// BitDepth is the bit-resolution used when encoding audio data - changing this involves changes in processBuffer()
 	BitDepth = 16
-	// HLSIndex is the top-level HLS metadata file
-	HLSIndex = "index.m3u8"
+	// HLSWindowSize is the number of URIs in the m3u8 sliding window (HLSWindowSize < FileCountLimit due to rotation)
+	HLSWindowSize = 5
+	// PlaylistNameTmpl is the pattern used when writing m3u8 playlists to disk
+	playlistNameTmpl = "playlist-%s-%s.m3u8"
 )
 
 var (
@@ -53,6 +54,33 @@ var (
 	FrameBuffer []frame.Frame
 	// HLSMasterPlaylist is the top-level HLS playlist struct
 	HLSMasterPlaylist *m3u8.MasterPlaylist
+	// HLSMediaPlaylists is an array of HLS media playlists
+	HLSMediaPlaylists []*m3u8.MediaPlaylist
+	// HLSIndex is the top-level HLS sequence counter
+	HLSIndex = 0
+	// HLSPlaylistHash is a randomly generated hash to uniquely identify playlists on restart of jackd/jacktrip
+	HLSPlaylistHash string
+	// HLSSupportedOutputs are the output target formats
+	HLSSupportedOutputs = []map[string]string{
+		// 1. max bps is roughly 110% of the average bps
+		// 2. 192k AAC required: https://developer.apple.com/documentation/http_live_streaming/hls_authoring_specification_for_apple_devices
+		// 3. est. ~1411k FLAC for lossless: https://www.gearpatrol.com/tech/audio/a36585957/lossless-audio-explained/
+		{
+			"avgBps": "192k",
+			"maxBps": "211k",
+			"codec":  "aac",
+		},
+		{
+			"avgBps": "320k",
+			"maxBps": "352k",
+			"codec":  "aac",
+		},
+		{
+			"avgBps": "1411k",
+			"maxBps": "1536k",
+			"codec":  "flac",
+		},
+	}
 )
 
 // Recorder listens to audio and records it to disk
@@ -74,9 +102,6 @@ type Recorder struct {
 }
 
 // NewRecorder constructs a new instance of Recorder
-// TODO: Should we merge this and make it part of autoconnector?
-//       Is there any benefit to having 2 JACK clients vs 1?
-//       There's some shared code between them
 func NewRecorder() *Recorder {
 	return &Recorder{
 		Name:           "recorder",
@@ -104,13 +129,17 @@ func (r *Recorder) processBuffer(nframes uint32) int {
 func (r *Recorder) reset() {
 	r.JackClient, r.RecorderPorts, r.JackSampleRate, r.JackBufferSize = nil, nil, 0, 0
 	for _, trash := range AudioFilenames {
-		cleanStaleFile(trash)
+		basename := filepath.Base(trash)
+		basenameWithoutExt := strings.TrimSuffix(basename, filepath.Ext(basename))
+		cleanFiles(filepath.Join(MediaDir, fmt.Sprintf("%s*", basenameWithoutExt)))
 	}
-	cleanStaleFile(filepath.Join(MediaDir, HLSIndex))
-	cleanStaleFile(filepath.Join(MediaDir, "init.mp4"))
-	cleanStaleFile(filepath.Join(MediaDir, "playlist-*.m3u8"))
+	cleanFiles(filepath.Join(MediaDir, "*.m3u8"))
+	cleanFiles(filepath.Join(MediaDir, "*.mp4"))
+	cleanFiles(filepath.Join(MediaDir, "*.ts"))
+	cleanFiles(filepath.Join(MediaDir, "*.m4s"))
 	AudioFilenames, FrameBuffer = nil, nil
-	log.Info("Teardown of JACK client completed")
+	HLSMasterPlaylist = nil
+	log.Info("Teardown of recorder completed")
 }
 
 // onShutdown only runs upon unexpected connection error
@@ -232,7 +261,9 @@ func openFLAC(sampleRate int) (*flac.Encoder, error) {
 	// Keep track of files created and rotate files
 	AudioFilenames = append(AudioFilenames, fh.Name())
 	if len(AudioFilenames) > FileCountLimit {
-		cleanStaleFile(AudioFilenames[0])
+		basename := filepath.Base(AudioFilenames[0])
+		basenameWithoutExt := strings.TrimSuffix(basename, filepath.Ext(basename))
+		cleanFiles(filepath.Join(MediaDir, fmt.Sprintf("%s*", basenameWithoutExt)))
 		AudioFilenames = AudioFilenames[1:]
 	}
 	info := &meta.StreamInfo{
@@ -245,55 +276,117 @@ func openFLAC(sampleRate int) (*flac.Encoder, error) {
 	return flac.NewEncoder(fh, info)
 }
 
-// cleanStaleFile deletes all files that pattern-match the input filename (minus extension)
-func cleanStaleFile(filename string) {
-	prefix := pathutil.TrimExt(filename)
-	files, _ := filepath.Glob(prefix + "*")
-	for _, f := range files {
-		os.Remove(f)
+// bpsToInt turns a bitrate string to an int
+func bpsToInt(bitrate string) uint32 {
+	b := strings.Split(bitrate, "k")[0]
+	result, err := strconv.Atoi(b)
+	if err != nil {
+		return 0
+	}
+	return uint32(result * 1000)
+}
+
+// constructPrimaryPlaylist idempotently configures the top-level playlist for a new set of streams
+func constructPrimaryPlaylist(playlist *m3u8.MasterPlaylist) {
+	playlist.Variants = nil
+	playlist.SetVersion(7)
+	playlist.SetIndependentSegments(true)
+	// Reset global counter, playlist array, and sub-playlist identifier
+	HLSIndex = 0
+	HLSMediaPlaylists = nil
+	HLSPlaylistHash = generateRandomString(8)
+	for _, out := range HLSSupportedOutputs {
+		// Create a new media playlist for each bitrate
+		stream, err := m3u8.NewMediaPlaylist(HLSWindowSize, HLSWindowSize)
+		if err != nil {
+			panic(err)
+		}
+		stream.SetVersion(7)
+		name := fmt.Sprintf(playlistNameTmpl, HLSPlaylistHash, out["avgBps"])
+		HLSMediaPlaylists = append(HLSMediaPlaylists, stream)
+		// Add to master playlist
+		codec := ""
+		if out["codec"] == "aac" {
+			codec = "mp4a.40.2"
+		}
+		playlist.Append(name, nil, m3u8.VariantParams{AverageBandwidth: bpsToInt(out["avgBps"]), Bandwidth: bpsToInt(out["maxBps"]), Codecs: codec})
 	}
 }
 
-func transcode(inputFile, encoding, bitrate string) {
-	basename := filepath.Base(inputFile)
-	basenameWithoutExt := strings.TrimSuffix(basename, filepath.Ext(basename))
-	outputFile := fmt.Sprintf("%s/%s-%s-%%03d.m4s", MediaDir, basenameWithoutExt, bitrate)
-	cmd := exec.Command(
-		// Call ffmpeg on the most-recently created FLAC file
-		"ffmpeg", "-hide_banner", "-i", inputFile,
-		// Convert original to desired encoding + bitrate
-		"-map", "0:a", "-c:a:0", encoding, "-b:a:0", bitrate,
+// constructTranscodingArgs builds the ffmpeg arguments used for transcoding
+func constructTranscodingArgs(sampleFilepath string) []string {
+	fname := getFilename(sampleFilepath)
+	// Call ffmpeg using the sampleFile input, ex: `ffmpeg -hide_banner -i raw.flac`
+	ffmpegArgs := []string{"-hide_banner", "-i", sampleFilepath}
+	for i, out := range HLSSupportedOutputs {
+		// Target output encoding + bitrate, ex: `-map 0:a -c:a:0 aac -b:a:0 192k`
+		dest := []string{
+			"-map", "0:a",
+			fmt.Sprintf("-c:a:%d", i),
+			out["codec"],
+			fmt.Sprintf("-b:a:%d", i),
+			out["avgBps"],
+		}
+		ffmpegArgs = append(ffmpegArgs, dest...)
+	}
+	// Add HLS-specific output options
+	ffmpegArgs = append(ffmpegArgs, []string{
 		// Transcode to HLS-compatible fragmented MP4 files
 		"-f", "hls", "-hls_segment_type", "fmp4",
-		"-hls_init_time", "0", "-hls_time", strconv.Itoa(FileDuration+1),
-		"-hls_flags", "delete_segments+append_list+omit_endlist+round_durations+program_date_time",
-		"-hls_playlist_type", "event",
-		//"-hls_list_size", strconv.Itoa(FileCountLimit),
-		"-hls_fmp4_init_filename", fmt.Sprintf("%s-%s-init.mp4", basenameWithoutExt, bitrate),
-		"-hls_segment_filename", outputFile,
+		"-hls_time", strconv.Itoa(FileDuration + 1),
+		"-hls_list_size", strconv.Itoa(HLSWindowSize),
+		"-hls_flags", "delete_segments+append_list+round_durations+omit_endlist+program_date_time",
+		"-hls_fmp4_init_filename", fmt.Sprintf("playlist-%s-%%v-init.mp4", HLSPlaylistHash),
+		"-hls_segment_filename", fmt.Sprintf("%s/%s-%%v-%%03d.m4s", MediaDir, fname),
 		// Enable experimental flags for flac->fmp4
 		"-strict", "experimental",
-		// Create playlist file
-		fmt.Sprintf("%s/playlist-%s.m3u8", MediaDir, bitrate),
-	)
-	cmd.CombinedOutput()
+		// These playlist names are required but unused because we need to craft the manifest ourselves
+		"-master_pl_name", "hiddenstream-index.m3u8",
+		"-var_stream_map", "a:0 a:1", filepath.Join(MediaDir, "hiddenstream-%v.m3u8"),
+	}...)
+	return ffmpegArgs
+}
+
+// insertNewMedia pushes a new media segment to a designated playlist
+func insertNewMedia(plist *m3u8.MediaPlaylist, sampleFilepath string, index int) {
+	fname := getFilename(sampleFilepath)
+	uri := fmt.Sprintf("%s-%d-%03d.m4s", fname, index, HLSIndex)
+	// When the playlist has reached capacity, manually shift some metadata to account for changes
+	if plist.Count() == 0 {
+		initMP4 := fmt.Sprintf("playlist-%s-%d-init.mp4", HLSPlaylistHash, index)
+		plist.SetDefaultMap(initMP4, 0, 0)
+	}
+	// Insert new segment into playlist; add discontinuity because technically it's a distinct file
+	plist.Slide(uri, FileDuration, "")
+	plist.SetDiscontinuity()
+	plist.SetProgramDateTime(time.Now().Truncate(time.Second))
+	// Keep #EXT-X-DISCONTINUITY-SEQUENCE in sync with #EXT-X-MEDIA-SEQUENCE
+	plist.DiscontinuitySeq = plist.SeqNo
 }
 
 func updateHLSPlaylist() {
-	if HLSMasterPlaylist != nil {
-		// Each transcode call writes/updates its own playlist file, while the master playlist is updated once here
-		if len(HLSMasterPlaylist.Variants) != 2 {
-			// These playlist names/variant params should match the ones in transcode()
-			HLSMasterPlaylist.Append("playlist-192k.m3u8", nil, m3u8.VariantParams{ProgramId: 1, Bandwidth: 192000, Codecs: "mp4a.40.2"})
-			HLSMasterPlaylist.Append("playlist-1411k.m3u8", nil, m3u8.VariantParams{ProgramId: 1, Bandwidth: 1411000})
-			os.WriteFile(fmt.Sprintf("%s/index.m3u8", MediaDir), HLSMasterPlaylist.Encode().Bytes(), 0644)
-		}
-		inputFile := AudioFilenames[len(AudioFilenames)-1]
-		// Convert to 192k AAC segment per spec: https://developer.apple.com/documentation/http_live_streaming/hls_authoring_specification_for_apple_devices
-		transcode(inputFile, "aac", "192k")
-		// Convert to 1411kbps FLAC segment for lossless: https://www.gearpatrol.com/tech/audio/a36585957/lossless-audio-explained/
-		transcode(inputFile, "flac", "1411k")
+	if HLSMasterPlaylist == nil {
+		return
 	}
+	// Add variants to the main playlist once after init
+	if len(HLSMasterPlaylist.Variants) != len(HLSSupportedOutputs) {
+		constructPrimaryPlaylist(HLSMasterPlaylist)
+		os.WriteFile(fmt.Sprintf("%s/index.m3u8", MediaDir), HLSMasterPlaylist.Encode().Bytes(), 0644)
+	}
+	// Transcode raw sample into proper HLS-compatible containers
+	newSample := AudioFilenames[len(AudioFilenames)-1]
+	ffmpegArgs := constructTranscodingArgs(newSample)
+	cmd := exec.Command("ffmpeg", ffmpegArgs...)
+	cmd.CombinedOutput()
+	// Update each media playlist with the newest segment
+	for i, out := range HLSSupportedOutputs {
+		plist := HLSMediaPlaylists[i]
+		insertNewMedia(plist, newSample, i)
+		plistFilename := fmt.Sprintf(playlistNameTmpl, HLSPlaylistHash, out["avgBps"])
+		os.WriteFile(filepath.Join(MediaDir, plistFilename), plist.Encode().Bytes(), 0644)
+	}
+	// Increment global counter for tracking purposes
+	HLSIndex++
 }
 
 func flush(frameBuffer []frame.Frame, sampleRate int) {

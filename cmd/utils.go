@@ -17,6 +17,8 @@ package main
 import (
 	"math"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -34,6 +36,30 @@ func min(x, y int) int {
 		return x
 	}
 	return y
+}
+
+// generateRandomString generates a string of n random alphanumeric characters
+func generateRandomString(n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = SecretBytes[rand.Intn(len(SecretBytes))]
+	}
+	return string(b)
+}
+
+// cleanFiles deletes all files that match a provided fileglob
+func cleanFiles(pattern string) {
+	files, _ := filepath.Glob(pattern)
+	for _, f := range files {
+		os.Remove(f)
+	}
+}
+
+// getFilename returns a filename without the extension
+func getFilename(file string) string {
+	basename := filepath.Base(file)
+	ext := filepath.Ext(basename)
+	return basename[0 : len(basename)-len(ext)]
 }
 
 func exponentialBackoffSleep(iteration int) {
