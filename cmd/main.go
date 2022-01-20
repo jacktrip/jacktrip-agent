@@ -50,8 +50,6 @@ func main() {
 
 	if *serverMode {
 		runOnServer(*apiOrigin)
-	} else {
-		runOnDevice(*apiOrigin)
 	}
 
 	log.Info("Exiting")

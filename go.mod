@@ -1,4 +1,4 @@
-module github.com/jacktrip/jacktrip-agent
+module github.com/jacktriplabs/jacktrip-agent
 
 go 1.16
 
@@ -9,6 +9,7 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.4.2
 	github.com/grafov/m3u8 v0.11.1
+	github.com/jacktrip/jacktrip-agent v0.0.0-20220120172812-76c8b3767abf
 	github.com/jmoiron/sqlx v1.2.0
 	github.com/mewkiz/flac v1.0.7
 	github.com/mewkiz/pkg v0.0.0-20190919212034-518ade7978e2

@@ -15,15 +15,11 @@
 package main
 
 import (
-	"bufio"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"regexp"
-	"strings"
 
 	"github.com/coreos/go-systemd/v22/dbus"
 	"github.com/jacktrip/jacktrip-agent/pkg/client"
@@ -47,6 +43,9 @@ const (
 
 	// PathToJamulusConfig is the path to Jamulus service config file
 	PathToJamulusConfig = "/tmp/default/jamulus"
+
+	// JamulusDeviceConfigTemplate is the template used to generate /tmp/default/jamulus file on raspberry pi devices
+	JamulusDeviceConfigTemplate = "JAMULUS_OPTS=-n -i /tmp/jamulus.ini -c %s:%d\n"
 )
 
 // updateServiceConfigs is used to update config for managed systemd services
@@ -63,46 +62,7 @@ func updateServiceConfigs(config client.AgentConfig, remoteName string, isServer
 	if isServer {
 		jackConfig = fmt.Sprintf(JackServerConfigTemplate, config.SampleRate, config.Period)
 		jackTripConfig = fmt.Sprintf(JackTripServerConfigTemplate, config.Port, jackTripExtraOpts)
-	} else {
-		updateJamulusIni(config, remoteName)
-
-		jackConfig = fmt.Sprintf(JackDeviceConfigTemplate, soundDeviceName, config.SampleRate, config.Period)
-
-		// configure limiter
-		if config.Limiter {
-			jackTripExtraOpts = fmt.Sprintf("%s -Oio", jackTripExtraOpts)
-		}
-
-		// configure effects
-		jackTripEffects := ""
-		if config.Compressor {
-			jackTripEffects = "o:c"
-		}
-		if config.Reverb > 0 {
-			reverbFloat := float32(config.Reverb) / 100
-			jackTripEffects = fmt.Sprintf("%s i:f(%f)", jackTripEffects, reverbFloat)
-		}
-		if jackTripEffects != "" {
-			jackTripExtraOpts = fmt.Sprintf("%s -f \"%s\"", jackTripExtraOpts, strings.TrimSpace(jackTripEffects))
-		}
-
-		receiveChannels := config.OutputChannels // audio signals from the audio server to the user, hence receiveChannels
-		sendChannels := config.InputChannels     // audio signals to the audio server from user's input, hence sendChannels
-		if config.Stereo {
-			if receiveChannels == 0 {
-				receiveChannels = 2 // default output channels is stereo
-			}
-			if sendChannels == 0 {
-				sendChannels = 1 // default input channels is mono
-			}
-		} else {
-			receiveChannels = 1
-			sendChannels = 1
-		}
-
-		jackTripConfig = fmt.Sprintf(JackTripDeviceConfigTemplate, receiveChannels, sendChannels, config.Host, config.Port, config.DevicePort, remoteName, strings.TrimSpace(jackTripExtraOpts))
 	}
-
 	// ensure config directory exists
 	err := os.MkdirAll("/tmp/default", 0755)
 	if err != nil {
@@ -134,58 +94,6 @@ func updateServiceConfigs(config client.AgentConfig, remoteName string, isServer
 		// update SuperCollider config files
 		updateSuperColliderConfigs(config)
 	}
-}
-
-// updateJamulusIni writes a new /tmp/jamulus.ini file using template at /var/lib/jacktrip/jamulus.ini
-func updateJamulusIni(config client.AgentConfig, remoteName string) {
-	srcFileName := "/var/lib/jacktrip/jamulus.ini"
-	srcFile, err := os.Open(srcFileName)
-	if err != nil {
-		log.Error(err, "Failed to open file for reading", "path", srcFileName)
-	}
-	defer srcFile.Close()
-
-	dstFileName := "/tmp/jamulus.ini"
-	dstFile, err := os.OpenFile(dstFileName, os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Error(err, "Failed to open file for writing", "path", dstFileName)
-	}
-	defer dstFile.Close()
-
-	quality := 2
-	if config.Quality == 0 {
-		quality = 0
-	}
-
-	writer := bufio.NewWriter(dstFile)
-	scanner := bufio.NewScanner(srcFile)
-	audioQualityRx := regexp.MustCompile(`.*<audioquality>.*</audioquality>.*`)
-	nameRx := regexp.MustCompile(`.*<name_base64>.*</name_base64>.*`)
-
-	writeToFile := func() {
-		line := scanner.Text()
-		if audioQualityRx.MatchString(line) {
-			line = fmt.Sprintf(" <audioquality>%d</audioquality>", quality)
-		}
-		if nameRx.MatchString(line) {
-			line = fmt.Sprintf(" <name_base64>%s</name_base64>", base64.StdEncoding.EncodeToString([]byte(remoteName)))
-		}
-		_, err = writer.WriteString(line + "\n")
-		if err != nil {
-			log.Error(err, "Error writing to file", "path", dstFileName)
-		}
-	}
-
-	for scanner.Scan() {
-		writeToFile()
-	}
-
-	if err := scanner.Err(); err != nil {
-		log.Error(err, "Error reading file", "path", srcFileName)
-	}
-
-	writeToFile()
-	writer.Flush()
 }
 
 // restartAllServices is used to restart all of the managed systemd services
