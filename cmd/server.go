@@ -235,7 +235,9 @@ func handleServerUpdate(config client.AgentConfig) {
 		// jack client will error when the server is only using Jamulus
 		if config.Type != client.Jamulus {
 			ac.SetupClient()
-			recorder.SetupClient()
+			if os.Getenv("JACKTRIP_CLOUD_ID") != "" {
+				recorder.SetupClient()
+			}
 		}
 	}
 
