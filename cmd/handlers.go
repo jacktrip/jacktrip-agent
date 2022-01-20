@@ -123,7 +123,7 @@ func handleStreamRequest(w http.ResponseWriter, r *http.Request) {
 
 // checkHLSOrigin checks for allowed origins in an HLS request
 func checkHLSOrigin(requestOrigin string) bool {
-	allowedOrigins := [...]string{"https://radio.jacktrip.com", "https://app.jacktrip.org", "https://radiotest.jacktrip.com", "https://test.jacktrip.org", "http://localhost:3000"}
+	allowedOrigins := [...]string{"https://jacktrip.radio", "https://app.jacktrip.org", "https://test.jacktrip.radio", "https://test.jacktrip.org", "http://localhost:3000", "http://localhost:8000"}
 	for _, v := range allowedOrigins {
 		if v == requestOrigin {
 			return true
@@ -137,11 +137,9 @@ func serveHLS(w http.ResponseWriter, r *http.Request, mediaBase, m3u8Name string
 	mediaFile := fmt.Sprintf("%s/%s", mediaBase, m3u8Name)
 	contentType := "video/MP2T"
 	if strings.HasSuffix(mediaFile, ".m3u8") {
-		contentType = "application/x-mpegURL"
-	} else if strings.HasSuffix(mediaFile, ".mp4") {
-		contentType = "video/mp4"
-	} else if strings.HasSuffix(mediaFile, ".m4s") {
-		contentType = "video/mp4"
+		contentType = "application/vnd.apple.mpegurl"
+	} else if strings.HasSuffix(mediaFile, ".mp4") || strings.HasSuffix(mediaFile, ".m4s") {
+		contentType = "video/iso.segment"
 	}
 
 	requestOrigin := r.Header.Get("Origin")
