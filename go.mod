@@ -8,13 +8,12 @@ require (
 	github.com/go-ping/ping v0.0.0-20201115131931-3300c582a663
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.4.2
-	github.com/grafov/m3u8 v0.11.1
 	github.com/jmoiron/sqlx v1.2.0
-	github.com/mewkiz/flac v1.0.7
-	github.com/mewkiz/pkg v0.0.0-20190919212034-518ade7978e2
 	github.com/stretchr/testify v1.7.0
-	github.com/xthexder/go-jack v0.0.0-20201026211055-5b07fb071116
 	go.uber.org/zap v1.16.0
+)
+
+require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-logr/logr v0.2.0 // indirect
 	github.com/godbus/dbus/v5 v5.0.3 // indirect
