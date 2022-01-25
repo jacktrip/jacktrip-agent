@@ -33,14 +33,7 @@ const (
 // main wires everything together and starts up the Agent server
 func main() {
 	apiOrigin := flag.String("o", "https://app.jacktrip.org/api", "origin to use when constructing API endpoints")
-	metricsMode := flag.Bool("m", false, "true to only collect metrics")
-	serverMode := flag.Bool("s", false, "true if running on audio server; false if on device")
 	flag.Parse()
-
-	if *metricsMode {
-		collectMetrics()
-		return
-	}
 
 	// require this be run as root
 	if os.Geteuid() != 0 {
@@ -48,11 +41,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	if *serverMode {
-		runOnServer(*apiOrigin)
-	} else {
-		runOnDevice(*apiOrigin)
-	}
-
+	runOnDevice(*apiOrigin)
 	log.Info("Exiting")
 }

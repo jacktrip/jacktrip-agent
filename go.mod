@@ -1,6 +1,6 @@
 module github.com/jacktrip/jacktrip-agent
 
-go 1.16
+go 1.17
 
 require (
 	github.com/coreos/go-systemd/v22 v22.1.0
@@ -12,10 +12,16 @@ require (
 	github.com/jmoiron/sqlx v1.2.0
 	github.com/mewkiz/flac v1.0.7
 	github.com/mewkiz/pkg v0.0.0-20190919212034-518ade7978e2
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/stretchr/testify v1.7.0
 	github.com/xthexder/go-jack v0.0.0-20201026211055-5b07fb071116
 	go.uber.org/zap v1.16.0
+	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/go-logr/logr v0.2.0 // indirect
+	github.com/godbus/dbus/v5 v5.0.3 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
+	go.uber.org/atomic v1.6.0 // indirect
+	go.uber.org/multierr v1.5.0 // indirect
 	golang.org/x/net v0.0.0-20201110031124-69a78807bb2b // indirect
 	golang.org/x/sys v0.0.0-20210615035016-665e8c7367d1 // indirect
 	golang.org/x/tools v0.1.0 // indirect
