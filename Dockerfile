@@ -1,9 +1,6 @@
-FROM golang:1.16 AS builder
+FROM golang:1.17 AS builder
 
 WORKDIR /go/src/github.com/jacktrip/jacktrip-agent/
-
-RUN apt-get update \
-    && apt-get install --no-install-recommends -y libjack-jackd2-dev
 
 COPY go.mod go.sum ./
 COPY cmd ./cmd
