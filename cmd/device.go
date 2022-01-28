@@ -175,7 +175,7 @@ func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm 
 			// device is connected to an audio server
 
 			// Measure connection latency to the audio server
-			MeasurePingStats(beat, wsm.APIOrigin, currentDeviceConfig.Host) // blocks for 5 seconds instead of time sleep
+			MeasurePingStats(beat, wsm.APIOrigin, currentDeviceConfig.Host, currentDeviceConfig.AuthToken) // blocks for 5 seconds instead of time sleep
 
 			// Initialize a socket connection (do nothing if already connected)
 			err := wsm.InitConnection(wg, beat.MAC)
