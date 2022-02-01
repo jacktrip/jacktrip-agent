@@ -17,6 +17,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"net/http"
 	"net/url"
 	"time"
 
@@ -26,10 +27,12 @@ import (
 )
 
 // MeasurePingStats uses a socket connection to measure a RTT to an audio server
-func MeasurePingStats(beat *client.DeviceHeartbeat, apiOrigin string, host string, port string) {
-	u := url.URL{Scheme: "ws", Host: fmt.Sprintf("%s:%s", host, port), Path: "/ping"}
+func MeasurePingStats(beat *client.DeviceHeartbeat, apiOrigin, host, token string) {
+	u := url.URL{Scheme: "wss", Host: host, Path: "/ping"}
 	dialer := websocket.Dialer{HandshakeTimeout: time.Second}
-	c, _, err := dialer.Dial(u.String(), nil) // this may block for HandshakeTimeout if the connection fails
+	header := make(http.Header)
+	header.Add("Authorization", fmt.Sprintf("Bearer %s", token))
+	c, _, err := dialer.Dial(u.String(), header) // this may block for HandshakeTimeout if the connection fails
 
 	// If a socket connection does not work for the host, use a ICMP ping (note: this normally should take 4 seconds)
 	if err != nil {

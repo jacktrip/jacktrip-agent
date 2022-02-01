@@ -17,7 +17,6 @@ package main
 import (
 	"bufio"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -273,30 +272,5 @@ func startService(conn *dbus.Conn, name string) error {
 		return fmt.Errorf("failed to start %s: job status=%s", name, jobStatus)
 	}
 	log.Info("Finished starting managed service", "name", name)
-	return nil
-}
-
-// startService is used to restart a managed systemd service
-func restartService(name string) error {
-	log.Info("Restarting managed service", "name", name)
-
-	// create dbus connection to manage systemd units
-	conn, err := dbus.New()
-	if err != nil {
-		return errors.New("failed to connect to dbus")
-	}
-	defer conn.Close()
-
-	reschan := make(chan string)
-	_, err = conn.RestartUnit(name, "replace", reschan)
-	if err != nil {
-		return fmt.Errorf("failed to restart %s: job status=%s", name, err.Error())
-	}
-
-	jobStatus := <-reschan
-	if jobStatus != "done" {
-		return fmt.Errorf("failed to restart %s: job status=%s", name, jobStatus)
-	}
-	log.Info("Finished restarting managed service", "name", name)
 	return nil
 }
