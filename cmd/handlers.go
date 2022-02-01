@@ -17,6 +17,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/gorilla/mux"
@@ -38,7 +39,7 @@ func runHTTPServer(wg *sync.WaitGroup, router *mux.Router, address string) error
 // handlePingRequest upgrades ping request to a websocket responder
 func handlePingRequest(w http.ResponseWriter, r *http.Request) {
 	// return success if no request for websocket
-	if r.Header.Get("Connection") != "Upgrade" || r.Header.Get("Upgrade") != "websocket" {
+	if strings.ToLower(r.Header.Get("Connection")) != "upgrade" || strings.ToLower(r.Header.Get("Upgrade")) != "websocket" {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.WriteHeader(http.StatusOK)

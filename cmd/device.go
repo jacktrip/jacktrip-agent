@@ -148,7 +148,10 @@ func deviceConfigUpdateHandler(wg *sync.WaitGroup, beat *client.DeviceHeartbeat,
 			return
 		}
 		if newDeviceConfig != currentDeviceConfig {
-			log.Info("Config updated", "value", newDeviceConfig)
+			// remove secrets before logging
+			sanitizedDeviceConfig := newDeviceConfig
+			sanitizedDeviceConfig.AuthToken = strings.Repeat("X", len(newDeviceConfig.AuthToken))
+			log.Info("Config updated", "value", sanitizedDeviceConfig)
 
 			// Check if the new config indicates a disconnect from an audio server. If yes, kill the existing socket as well.
 			if wsm.IsInitialized && (!bool(newDeviceConfig.Enabled) || newDeviceConfig.Host == "") {
