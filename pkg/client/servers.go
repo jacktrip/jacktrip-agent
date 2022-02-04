@@ -60,6 +60,9 @@ type ServerConfig struct {
 	// true if client's audio should loop back to them
 	LoopBack types.BitBool `json:"loopback" db:"loopback"`
 
+	// true if server has broadcast mode enabled
+	Broadcast types.BitBool `json:"broadcast" db:"broadcast"`
+
 	// true if enabled
 	Enabled types.BitBool `json:"enabled" db:"enabled"`
 }
