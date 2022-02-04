@@ -1,4 +1,4 @@
-// Copyright 2020-2021 JackTrip Labs, Inc.
+// Copyright 2020-2022 JackTrip Labs, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,11 +16,10 @@ package main
 
 import (
 	"bufio"
-	"errors"
+	"encoding/base64"
 	"fmt"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"regexp"
 	"strings"
 
@@ -59,48 +58,44 @@ func updateServiceConfigs(config client.AgentConfig, remoteName string, isServer
 
 	// create config opts from templates
 	var jackConfig, jackTripConfig string
-	if isServer {
-		jackConfig = fmt.Sprintf(JackServerConfigTemplate, config.SampleRate, config.Period)
-		jackTripConfig = fmt.Sprintf(JackTripServerConfigTemplate, config.Port, jackTripExtraOpts)
-	} else {
-		updateJamulusIni(config)
 
-		jackConfig = fmt.Sprintf(JackDeviceConfigTemplate, soundDeviceName, config.SampleRate, config.Period)
+	updateJamulusIni(config, remoteName)
 
-		// configure limiter
-		if config.Limiter {
-			jackTripExtraOpts = fmt.Sprintf("%s -Oio", jackTripExtraOpts)
-		}
+	jackConfig = fmt.Sprintf(JackDeviceConfigTemplate, soundDeviceName, config.SampleRate, config.Period)
 
-		// configure effects
-		jackTripEffects := ""
-		if config.Compressor {
-			jackTripEffects = "o:c"
-		}
-		if config.Reverb > 0 {
-			reverbFloat := float32(config.Reverb) / 100
-			jackTripEffects = fmt.Sprintf("%s i:f(%f)", jackTripEffects, reverbFloat)
-		}
-		if jackTripEffects != "" {
-			jackTripExtraOpts = fmt.Sprintf("%s -f \"%s\"", jackTripExtraOpts, strings.TrimSpace(jackTripEffects))
-		}
-
-		receiveChannels := config.OutputChannels // audio signals from the audio server to the user, hence receiveChannels
-		sendChannels := config.InputChannels     // audio signals to the audio server from user's input, hence sendChannels
-		if config.Stereo {
-			if receiveChannels == 0 {
-				receiveChannels = 2 // default output channels is stereo
-			}
-			if sendChannels == 0 {
-				sendChannels = 1 // default input channels is mono
-			}
-		} else {
-			receiveChannels = 1
-			sendChannels = 1
-		}
-
-		jackTripConfig = fmt.Sprintf(JackTripDeviceConfigTemplate, receiveChannels, sendChannels, config.Host, config.Port, config.DevicePort, remoteName, strings.TrimSpace(jackTripExtraOpts))
+	// configure limiter
+	if config.Limiter {
+		jackTripExtraOpts = fmt.Sprintf("%s -Oio", jackTripExtraOpts)
 	}
+
+	// configure effects
+	jackTripEffects := ""
+	if config.Compressor {
+		jackTripEffects = "o:c"
+	}
+	if config.Reverb > 0 {
+		reverbFloat := float32(config.Reverb) / 100
+		jackTripEffects = fmt.Sprintf("%s i:f(%f)", jackTripEffects, reverbFloat)
+	}
+	if jackTripEffects != "" {
+		jackTripExtraOpts = fmt.Sprintf("%s -f \"%s\"", jackTripExtraOpts, strings.TrimSpace(jackTripEffects))
+	}
+
+	receiveChannels := config.OutputChannels // audio signals from the audio server to the user, hence receiveChannels
+	sendChannels := config.InputChannels     // audio signals to the audio server from user's input, hence sendChannels
+	if config.Stereo {
+		if receiveChannels == 0 {
+			receiveChannels = 2 // default output channels is stereo
+		}
+		if sendChannels == 0 {
+			sendChannels = 1 // default input channels is mono
+		}
+	} else {
+		receiveChannels = 1
+		sendChannels = 1
+	}
+
+	jackTripConfig = fmt.Sprintf(JackTripDeviceConfigTemplate, receiveChannels, sendChannels, config.Host, config.Port, config.DevicePort, remoteName, strings.TrimSpace(jackTripExtraOpts))
 
 	// ensure config directory exists
 	err := os.MkdirAll("/tmp/default", 0755)
@@ -128,15 +123,10 @@ func updateServiceConfigs(config client.AgentConfig, remoteName string, isServer
 	if err != nil {
 		log.Error(err, "Failed to save Jamulus config", "path", PathToJamulusConfig)
 	}
-
-	if isServer {
-		// update SuperCollider config files
-		updateSuperColliderConfigs(config)
-	}
 }
 
 // updateJamulusIni writes a new /tmp/jamulus.ini file using template at /var/lib/jacktrip/jamulus.ini
-func updateJamulusIni(config client.AgentConfig) {
+func updateJamulusIni(config client.AgentConfig, remoteName string) {
 	srcFileName := "/var/lib/jacktrip/jamulus.ini"
 	srcFile, err := os.Open(srcFileName)
 	if err != nil {
@@ -159,11 +149,15 @@ func updateJamulusIni(config client.AgentConfig) {
 	writer := bufio.NewWriter(dstFile)
 	scanner := bufio.NewScanner(srcFile)
 	audioQualityRx := regexp.MustCompile(`.*<audioquality>.*</audioquality>.*`)
+	nameRx := regexp.MustCompile(`.*<name_base64>.*</name_base64>.*`)
 
 	writeToFile := func() {
 		line := scanner.Text()
 		if audioQualityRx.MatchString(line) {
-			line = fmt.Sprintf("<audioquality>%d</audioquality>", quality)
+			line = fmt.Sprintf(" <audioquality>%d</audioquality>", quality)
+		}
+		if nameRx.MatchString(line) {
+			line = fmt.Sprintf(" <name_base64>%s</name_base64>", base64.StdEncoding.EncodeToString([]byte(remoteName)))
 		}
 		_, err = writer.WriteString(line + "\n")
 		if err != nil {
@@ -194,9 +188,7 @@ func restartAllServices(config client.AgentConfig, isServer bool) {
 	defer conn.Close()
 
 	// stop any managed services that are active
-	units, err := conn.ListUnitsByNames([]string{JackServiceName,
-		SCSynthServiceName, SupernovaServiceName, SCLangServiceName, JackTripServiceName,
-		JamulusServiceName, JamulusServerServiceName, JamulusBridgeServiceName})
+	units, err := conn.ListUnitsByNames([]string{JackServiceName, JackTripServiceName, JamulusServiceName})
 	if err != nil {
 		log.Error(err, "Failed to get status of managed services")
 		panic(err)
@@ -216,35 +208,19 @@ func restartAllServices(config client.AgentConfig, isServer bool) {
 
 	// determine which services to start
 	var servicesToStart []string
-	SCSynthRestarted := false
 	switch config.Type {
 	case client.JackTrip:
 		servicesToStart = []string{JackServiceName, JackTripServiceName}
-		if isServer {
-			servicesToStart = append(servicesToStart, SCSynthServiceName, SCLangServiceName)
-			SCSynthRestarted = true
-		}
 	case client.Jamulus:
-		if isServer {
-			servicesToStart = []string{JackServiceName, JamulusServerServiceName}
-		} else {
-			servicesToStart = []string{JackServiceName, JamulusServiceName}
-		}
+		servicesToStart = []string{JackServiceName, JamulusServiceName}
 	case client.JackTripJamulus:
-		if isServer {
+		switch config.Quality {
+		case 0:
+			servicesToStart = []string{JackServiceName, JamulusServiceName}
+		case 1:
+			servicesToStart = []string{JackServiceName, JamulusServiceName}
+		case 2:
 			servicesToStart = []string{JackServiceName, JackTripServiceName}
-			servicesToStart = append(servicesToStart, JamulusServerServiceName, JamulusBridgeServiceName)
-			servicesToStart = append(servicesToStart, SCSynthServiceName, SCLangServiceName)
-			SCSynthRestarted = true
-		} else {
-			switch config.Quality {
-			case 0:
-				servicesToStart = []string{JackServiceName, JamulusServiceName}
-			case 1:
-				servicesToStart = []string{JackServiceName, JamulusServiceName}
-			case 2:
-				servicesToStart = []string{JackServiceName, JackTripServiceName}
-			}
 		}
 	}
 
@@ -254,20 +230,6 @@ func restartAllServices(config client.AgentConfig, isServer bool) {
 		if err != nil {
 			log.Error(err, "Unable to start service", "name", serviceName)
 			panic(err)
-		}
-	}
-
-	// if SuperCollider was restarted, wait for it to be running
-	if SCSynthRestarted {
-		log.Info("Waiting for scsynth to be running")
-		if _, err := os.Stat(PathToSuperColliderLivenessFile); !os.IsNotExist(err) {
-			cmd := exec.Command("sclang", PathToSuperColliderLivenessFile)
-			err := cmd.Run()
-			if err != nil {
-				log.Error(err, "Failed to wait for scsynth to be running")
-				panic(err)
-			}
-			log.Info("Successfully detected running scsynth")
 		}
 	}
 }
@@ -310,30 +272,5 @@ func startService(conn *dbus.Conn, name string) error {
 		return fmt.Errorf("failed to start %s: job status=%s", name, jobStatus)
 	}
 	log.Info("Finished starting managed service", "name", name)
-	return nil
-}
-
-// startService is used to restart a managed systemd service
-func restartService(name string) error {
-	log.Info("Restarting managed service", "name", name)
-
-	// create dbus connection to manage systemd units
-	conn, err := dbus.New()
-	if err != nil {
-		return errors.New("failed to connect to dbus")
-	}
-	defer conn.Close()
-
-	reschan := make(chan string)
-	_, err = conn.RestartUnit(name, "replace", reschan)
-	if err != nil {
-		return fmt.Errorf("failed to restart %s: job status=%s", name, err.Error())
-	}
-
-	jobStatus := <-reschan
-	if jobStatus != "done" {
-		return fmt.Errorf("failed to restart %s: job status=%s", name, jobStatus)
-	}
-	log.Info("Finished restarting managed service", "name", name)
 	return nil
 }

@@ -79,6 +79,9 @@ type AgentConfig struct {
 
 	// size of jitter queue buffer
 	QueueBuffer int `json:"queueBuffer" db:"queue_buffer"`
+
+	// authorization token used by jacktrip-agent to access studio servers
+	AuthToken string `json:"authToken" db:"auth_token"`
 }
 
 // PingStats defines a ping statistics to an audio server

@@ -1,4 +1,4 @@
-// Copyright 2020-2021 JackTrip Labs, Inc.
+// Copyright 2020-2022 JackTrip Labs, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,11 +29,6 @@ type TestPayload struct {
 type TestResponseHeaders struct {
 	header string
 	result string
-}
-
-func TestConstants(t *testing.T) {
-	assert := assert.New(t)
-	assert.Equal("1029", HTTPServerPort)
 }
 
 func TestRunHTTPServer(t *testing.T) {

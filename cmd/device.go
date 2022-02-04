@@ -1,4 +1,4 @@
-// Copyright 2020-2021 JackTrip Labs, Inc.
+// Copyright 2020-2022 JackTrip Labs, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -148,7 +148,10 @@ func deviceConfigUpdateHandler(wg *sync.WaitGroup, beat *client.DeviceHeartbeat,
 			return
 		}
 		if newDeviceConfig != currentDeviceConfig {
-			log.Info("Config updated", "value", newDeviceConfig)
+			// remove secrets before logging
+			sanitizedDeviceConfig := newDeviceConfig
+			sanitizedDeviceConfig.AuthToken = strings.Repeat("X", len(newDeviceConfig.AuthToken))
+			log.Info("Config updated", "value", sanitizedDeviceConfig)
 
 			// Check if the new config indicates a disconnect from an audio server. If yes, kill the existing socket as well.
 			if wsm.IsInitialized && (!bool(newDeviceConfig.Enabled) || newDeviceConfig.Host == "") {
@@ -166,11 +169,16 @@ func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm 
 	firstHeartbeat := true
 
 	for {
+		// reconcile device version to handle first-time startup where patch files may be missing
+		if beat.Version == "" {
+			beat.Version = getPatchVersion()
+		}
+
 		if currentDeviceConfig.Enabled && currentDeviceConfig.Host != "" {
 			// device is connected to an audio server
 
 			// Measure connection latency to the audio server
-			MeasurePingStats(beat, wsm.APIOrigin, currentDeviceConfig.Host, HTTPServerPort) // blocks for 5 seconds instead of time sleep
+			MeasurePingStats(beat, wsm.APIOrigin, currentDeviceConfig.Host, currentDeviceConfig.AuthToken) // blocks for 5 seconds instead of time sleep
 
 			// Initialize a socket connection (do nothing if already connected)
 			err := wsm.InitConnection(wg, beat.MAC)

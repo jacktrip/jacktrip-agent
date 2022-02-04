@@ -15,8 +15,6 @@
 package client
 
 import (
-	"encoding/json"
-
 	"github.com/jmoiron/sqlx/types"
 )
 
@@ -70,25 +68,4 @@ type ServerConfig struct {
 type ServerHeartbeat struct {
 	// Cloud identifier for server (used when running on cloud audio server)
 	CloudID string `json:"cloudId"`
-}
-
-// ServerMetric is used to model metrics from servers / studios
-type ServerMetric struct {
-	// Metric identifier
-	Name string `json:"name"`
-
-	// Metric value
-	Value float64 `json:"value"`
-
-	// Client name tag for filtering/grouping
-	ClientName string `json:"clientName,omitempty"`
-}
-
-func (m *ServerMetric) MarshalJSON() ([]byte, error) {
-	result := make(map[string]interface{})
-	result[m.Name] = m.Value
-	if m.ClientName != "" {
-		result["clientName"] = m.ClientName
-	}
-	return json.Marshal(result)
 }

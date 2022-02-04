@@ -77,7 +77,7 @@ func TestAgentConfig(t *testing.T) {
 	var target AgentConfig
 
 	// Parse JSON into AgentConfig struct
-	raw = `{"period": 3, "queueBuffer": 128, "devicePort": 8000, "reverb": 42, "limiter": true, "compressor": 0, "quality": 2, "captureBoost": true, "playbackBoost": 0, "captureVolume": 100, "playbackVolume": 0, "type": "JackTrip+Jamulus", "mixBranch": "main", "mixCode": "echo hi", "serverHost": "a.b.com", "serverPort": 8000, "sampleRate": 96000, "inputChannels": 2, "outputChannels": 2, "loopback": false, "enabled": true}`
+	raw = `{"period": 3, "queueBuffer": 128, "devicePort": 8000, "reverb": 42, "limiter": true, "compressor": 0, "quality": 2, "captureBoost": true, "playbackBoost": 0, "captureVolume": 100, "playbackVolume": 0, "type": "JackTrip+Jamulus", "mixBranch": "main", "mixCode": "echo hi", "serverHost": "a.b.com", "serverPort": 8000, "sampleRate": 96000, "inputChannels": 2, "outputChannels": 2, "loopback": false, "enabled": true, "authToken": "foobar"}`
 	target = AgentConfig{}
 	json.Unmarshal([]byte(raw), &target)
 	assert.Equal(3, target.Period)
@@ -101,6 +101,7 @@ func TestAgentConfig(t *testing.T) {
 	assert.Equal(2, target.OutputChannels)
 	assert.Equal(false, bool(target.LoopBack))
 	assert.Equal(true, bool(target.Enabled))
+	assert.Equal("foobar", target.AuthToken)
 }
 
 func TestAgentCredentials(t *testing.T) {

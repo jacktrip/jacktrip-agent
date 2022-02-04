@@ -1,4 +1,4 @@
-// Copyright 2020-2021 JackTrip Labs, Inc.
+// Copyright 2020-2022 JackTrip Labs, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,22 +25,12 @@ const (
 
 	// AgentLibDir is the directory containing additional files used by the agent
 	AgentLibDir = "/var/lib/jacktrip"
-
-	// HTTPServerPort opens a router at the port
-	HTTPServerPort = "1029"
 )
 
 // main wires everything together and starts up the Agent server
 func main() {
 	apiOrigin := flag.String("o", "https://app.jacktrip.org/api", "origin to use when constructing API endpoints")
-	metricsMode := flag.Bool("m", false, "true to only collect metrics")
-	serverMode := flag.Bool("s", false, "true if running on audio server; false if on device")
 	flag.Parse()
-
-	if *metricsMode {
-		collectMetrics()
-		return
-	}
 
 	// require this be run as root
 	if os.Geteuid() != 0 {
@@ -48,11 +38,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	if *serverMode {
-		runOnServer(*apiOrigin)
-	} else {
-		runOnDevice(*apiOrigin)
-	}
-
+	runOnDevice(*apiOrigin)
 	log.Info("Exiting")
 }
