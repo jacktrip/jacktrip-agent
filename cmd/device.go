@@ -125,9 +125,12 @@ func runOnDevice(apiOrigin string) {
 	wg.Add(1)
 	go wsm.recvConfigHandler(&wg)
 
+	dmm := DeviceMixingManager{}
+	dmm.Reset()
+
 	// start sending heartbeats and updating agent configs
 	wg.Add(1)
-	go sendDeviceHeartbeats(&wg, &beat, &wsm)
+	go sendDeviceHeartbeats(&wg, &beat, &wsm, &dmm)
 
 	// Start a config handler to update config changes
 	wg.Add(1)
@@ -163,7 +166,7 @@ func deviceConfigUpdateHandler(wg *sync.WaitGroup, beat *client.DeviceHeartbeat,
 }
 
 // sendDeviceHeartbeats sends device heartbeat messages to the backend api, and receives config updates
-func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager) {
+func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager, dmm *DeviceMixingManager) {
 	defer wg.Done()
 	log.Info("Sending device heartbeats")
 	firstHeartbeat := true
@@ -174,8 +177,13 @@ func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm 
 			beat.Version = getPatchVersion()
 		}
 
+
 		if currentDeviceConfig.Enabled && currentDeviceConfig.Host != "" {
 			// device is connected to an audio server
+
+			if !firstHeartbeat {
+				dmm.SynchronizeConnections()
+			}
 
 			// Measure connection latency to the audio server
 			MeasurePingStats(beat, wsm.APIOrigin, currentDeviceConfig.Host, currentDeviceConfig.AuthToken) // blocks for 5 seconds instead of time sleep
@@ -193,6 +201,7 @@ func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm 
 
 		} else {
 			// device is not connected to an audio server
+			dmm.Reset()
 
 			if firstHeartbeat {
 				// don't sleep before sending first heartbeat

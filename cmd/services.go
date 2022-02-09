@@ -177,6 +177,57 @@ func updateJamulusIni(config client.AgentConfig, remoteName string) {
 	writer.Flush()
 }
 
+func StartJackConnectUnit(mode string, device string) error {
+	conn, err := dbus.New()
+	if err != nil {
+		log.Error(err, "Failed to connect to dbus")
+	}
+	defer conn.Close()
+
+	serviceName := fmt.Sprintf("jack-connect-%s-@%s.service", mode, device)
+	err = startTransientService(conn, serviceName)
+	if err != nil {
+		log.Error(err, "Unable to start transient service", "name", serviceName)
+	}
+	return err
+}
+
+func StartZitaService(serviceName string) error {
+	conn, err := dbus.New()
+	if err != nil {
+		log.Error(err, "Failed to connect to dbus")
+	}
+	defer conn.Close()
+
+	err = startService(conn, serviceName)
+	if err != nil {
+		log.Error(err, "Unable to start service", "name", serviceName)
+	}
+	return err
+}
+
+func StopZitaService(serviceName string) error {
+	conn, err := dbus.New()
+	if err != nil {
+		log.Error(err, "Failed to connect to dbus")
+	}
+	defer conn.Close()
+
+	// stop any managed services that are active
+	units, err := conn.ListUnitsByNames([]string{serviceName})
+	if err != nil {
+		log.Error(err, "Failed to get status of managed services")
+	}
+
+	for _, u := range units {
+		err = stopService(conn, u)
+		if err != nil {
+			log.Error(err, "Unable to stop service")
+		}
+	}
+	return err
+}
+
 // restartAllServices is used to restart all of the managed systemd services
 func restartAllServices(config client.AgentConfig, isServer bool) {
 	// create dbus connection to manage systemd units
@@ -272,5 +323,23 @@ func startService(conn *dbus.Conn, name string) error {
 		return fmt.Errorf("failed to start %s: job status=%s", name, jobStatus)
 	}
 	log.Info("Finished starting managed service", "name", name)
+	return nil
+}
+
+func startTransientService(conn *dbus.Conn, name string) error {
+	log.Info("Starting transient service", "name", name)
+
+	// reschan := make(chan string)
+	// _, err := conn.StartTransientUnit(name, "replace", reschan)
+
+	// if err != nil {
+	// 	return fmt.Errorf("failed to start %s: job status=%s", name, err.Error())
+	// }
+
+	// jobStatus := <-reschan
+	// if jobStatus != "done" {
+	// 	return fmt.Errorf("failed to start %s: job status=%s", name, jobStatus)
+	// }
+	// log.Info("Finished starting transient service", "name", name)
 	return nil
 }

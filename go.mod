@@ -10,6 +10,7 @@ require (
 	github.com/gorilla/websocket v1.4.2
 	github.com/jmoiron/sqlx v1.2.0
 	github.com/stretchr/testify v1.7.0
+	github.com/xthexder/go-jack v0.0.0-20201026211055-5b07fb071116
 	go.uber.org/zap v1.16.0
 )
 
@@ -19,6 +20,7 @@ require (
 	github.com/godbus/dbus/v5 v5.0.3 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/xthexder/go-jack v0.0.0-20201026211055-5b07fb071116 // indirect
 	go.uber.org/atomic v1.6.0 // indirect
 	go.uber.org/multierr v1.5.0 // indirect
 	golang.org/x/net v0.0.0-20201110031124-69a78807bb2b // indirect
