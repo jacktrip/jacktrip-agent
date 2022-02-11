@@ -22,7 +22,7 @@ import (
 type ServerType string
 
 // BroadcastVisibility controls the access modes of an audio server broadcast
-type BroadcastVisibility string
+type BroadcastVisibility int
 
 const (
 	// JackTrip server (https://github.com/jacktrip/jacktrip)
@@ -35,13 +35,13 @@ const (
 	JackTripJamulus ServerType = "JackTrip+Jamulus"
 
 	// Public means everyone has access
-	Public BroadcastVisibility = "Public"
+	Public BroadcastVisibility = 0
 
 	// Private means no one has access
-	Private BroadcastVisibility = "Private"
+	Private BroadcastVisibility = 1
 
 	// Unlisted means only people with the link have access
-	Unlisted BroadcastVisibility = "Unlisted"
+	Unlisted BroadcastVisibility = 2
 )
 
 // ServerConfig defines configuration for a particular server
