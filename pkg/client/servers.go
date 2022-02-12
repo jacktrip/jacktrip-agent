@@ -21,6 +21,9 @@ import (
 // ServerType is used to determine the type of an audio server
 type ServerType string
 
+// BroadcastVisibility controls the access modes of an audio server broadcast
+type BroadcastVisibility int
+
 const (
 	// JackTrip server (https://github.com/jacktrip/jacktrip)
 	JackTrip ServerType = "JackTrip"
@@ -30,6 +33,15 @@ const (
 
 	// JackTripJamulus means both JackTrip AND Jamulus server
 	JackTripJamulus ServerType = "JackTrip+Jamulus"
+
+	// Public means everyone has access
+	Public BroadcastVisibility = 0
+
+	// Private means no one has access
+	Private BroadcastVisibility = 1
+
+	// Unlisted means only people with the link have access
+	Unlisted BroadcastVisibility = 2
 )
 
 // ServerConfig defines configuration for a particular server
@@ -59,6 +71,9 @@ type ServerConfig struct {
 
 	// true if client's audio should loop back to them
 	LoopBack types.BitBool `json:"loopback" db:"loopback"`
+
+	// broadcast visibility of the audio server
+	Broadcast BroadcastVisibility `json:"broadcast" db:"broadcast"`
 
 	// true if enabled
 	Enabled types.BitBool `json:"enabled" db:"enabled"`
