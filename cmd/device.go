@@ -314,6 +314,27 @@ func updateALSASettings(config client.AgentConfig) {
 		updateALSASettingsUSBAudioDevice(config)
 	case "USB PnP Sound Device":
 		updateALSASettingsUSBPnPSoundDevice(config)
+
+	case "Samson Meteor Mic":
+		fallthrough
+	case "Samson C01U Pro Mic":
+		fallthrough
+	case "Samson GoMic":
+		fallthrough
+	case "Samson Go Mic":
+		updateALSASettingsSamsonGeneric(config)
+
+	case "Samson Q9U":
+		fallthrough
+	case "Samson Satellite":
+		updateALSASettingsSamsonSatelliteQ9U(config)
+
+	case "Samson UP1":
+		updateALSASettingsSamsonUP1(config)
+
+	case "Samson Q2U":
+		updateALSASettingsSamsonQ2U(config)
+
 	default:
 		log.Info("No ALSA alsa controls for sound device", "type", soundDeviceType)
 	}
@@ -464,6 +485,108 @@ func updateALSASettingsUSBPnPSoundDevice(config client.AgentConfig) {
 	cmd = exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Speaker Playback Volume'", "--", fmt.Sprintf("%d,%d", v, v))
 	if err := cmd.Run(); err != nil {
 		log.Error(err, "Unable to update 'Speaker Playback Volume' to %d: %s", "value", v)
+	} else {
+		log.Info("Updated 'Speaker Playback Volume'", "value", v)
+	}
+}
+
+// updateALSASettingsSamsonGeneric is used to update the settings for a USB sound card
+func updateALSASettingsSamsonGeneric(config client.AgentConfig) {
+	var v int
+	amixerDevice := fmt.Sprintf("hw:%s", soundDeviceName)
+
+	// set capture volume
+	v = int(config.CaptureVolume)
+	cmd := exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Mic Capture Volume'", "--", fmt.Sprintf("%d%%", v))
+	if err := cmd.Run(); err != nil {
+		log.Error(err, "Unable to update 'Mic Capture Volume'", "value", v)
+	} else {
+		log.Info("Updated 'Mic Capture Volume'", "value", v)
+	}
+
+	// set playback volume
+	v = int(config.PlaybackVolume)
+	cmd = exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Speaker Playback Volume'", "--", fmt.Sprintf("%d%%", v))
+	if err := cmd.Run(); err != nil {
+		log.Error(err, "Unable to update 'Speaker Playback Volume' to %d: %s", "value", v)
+	} else {
+		log.Info("Updated 'Speaker Playback Volume'", "value", v)
+	}
+}
+
+// updateALSASettingsSamsonSatelliteQ9U is used to update the settings for a USB sound card
+func updateALSASettingsSamsonSatelliteQ9U(config client.AgentConfig) {
+	var v int
+	amixerDevice := fmt.Sprintf("hw:%s", soundDeviceName)
+
+	// set capture volume
+	v = int(config.CaptureVolume)
+	cmd := exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Mic Gain Capture Volume'", "--", fmt.Sprintf("%d%%", v))
+	if err := cmd.Run(); err != nil {
+		log.Error(err, "Unable to update 'Mic Gain Capture Volume'", "value", v)
+	} else {
+		log.Info("Updated 'Mic Gain Capture Volume'", "value", v)
+	}
+
+	// set playback volume
+	v = int(config.PlaybackVolume)
+	cmd = exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='HP Volume Playback Volume'", "--", fmt.Sprintf("%d%%", v))
+	if err := cmd.Run(); err != nil {
+		log.Error(err, "Unable to update 'HP Volume Playback Volume' to %d: %s", "value", v)
+	} else {
+		log.Info("Updated 'HP Volume Playback Volume'", "value", v)
+	}
+}
+
+// updateALSASettingsSamsonUP1 is used to update the settings for a USB sound card
+func updateALSASettingsSamsonUP1(config client.AgentConfig) {
+	var v int
+	amixerDevice := fmt.Sprintf("hw:%s", soundDeviceName)
+
+	// set capture volume
+	v = int(config.CaptureVolume)
+	cmd := exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Mic Capture Volume'", "--", fmt.Sprintf("%d%%", v))
+	if err := cmd.Run(); err != nil {
+		log.Error(err, "Unable to update 'Mic Capture Volume'", "value", v)
+	} else {
+		log.Info("Updated 'Mic Capture Volume'", "value", v)
+	}
+
+	// set playback volume
+	v = int(config.PlaybackVolume)
+	cmd = exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Headphone Playback Volume'", "--", fmt.Sprintf("%d%%", v))
+	if err := cmd.Run(); err != nil {
+		log.Error(err, "Unable to update 'Headphone Playback Volume' to %d: %s", "value", v)
+	} else {
+		log.Info("Updated 'Headphone Playback Volume'", "value", v)
+	}
+}
+
+
+// updateALSASettingsSamsonQ2U is used to update the settings for a USB sound card
+func updateALSASettingsSamsonQ2U(config client.AgentConfig) {
+	var v int
+	amixerDevice := fmt.Sprintf("hw:%s", soundDeviceName)
+
+	// set capture volume
+	v = int(config.CaptureVolume)
+	cmd := exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Mic Capture Volume'", "--", fmt.Sprintf("%d%%", v))
+	if err := cmd.Run(); err != nil {
+		log.Error(err, "Unable to update 'Mic Capture Volume'", "value", v)
+	} else {
+		log.Info("Updated 'Mic Capture Volume'", "value", v)
+	}
+
+	// set playback volume
+	v = int(config.PlaybackVolume)
+	cmd = exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Speaker Playback Volume'", "--", fmt.Sprintf("%d%%", v))
+	if err := cmd.Run(); err != nil {
+		cmd = exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Headphone Playback Volume'", "--", fmt.Sprintf("%d%%", v))
+		if err := cmd.Run(); err != nil {
+			log.Error(err, "Unable to update 'Speaker/Headphone Playback Volume' to %d: %s", "value", v)
+		} else {
+			log.Info("Updated 'Headphone Playback Volume'", "value", v)
+		}
 	} else {
 		log.Info("Updated 'Speaker Playback Volume'", "value", v)
 	}
