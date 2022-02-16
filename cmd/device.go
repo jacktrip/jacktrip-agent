@@ -562,7 +562,6 @@ func updateALSASettingsSamsonUP1(config client.AgentConfig) {
 	}
 }
 
-
 // updateALSASettingsSamsonQ2U is used to update the settings for a USB sound card
 func updateALSASettingsSamsonQ2U(config client.AgentConfig) {
 	var v int
