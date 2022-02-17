@@ -34,11 +34,11 @@ const (
 	// JackTripJamulus means both JackTrip AND Jamulus server
 	JackTripJamulus ServerType = "JackTrip+Jamulus"
 
-	// Public means everyone has access
-	Public BroadcastVisibility = 0
-
 	// Private means no one has access
-	Private BroadcastVisibility = 1
+	Private BroadcastVisibility = 0
+
+	// Public means everyone has access
+	Public BroadcastVisibility = 1
 
 	// Unlisted means only people with the link have access
 	Unlisted BroadcastVisibility = 2
