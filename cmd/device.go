@@ -55,6 +55,7 @@ const (
 	PathToAsoundCards = "/proc/asound/cards"
 )
 
+var ac *AutoConnector
 var soundDeviceName = ""
 var soundDeviceType = ""
 var lastDeviceStatus = "starting"
@@ -125,6 +126,11 @@ func runOnDevice(apiOrigin string) {
 	wg.Add(1)
 	go wsm.recvConfigHandler(&wg)
 
+	// Start JACK autoconnector
+	ac = NewAutoConnector()
+	wg.Add(1)
+	go ac.Run(&wg)
+
 	dmm := DeviceMixingManager{}
 	dmm.Reset()
 
@@ -176,7 +182,6 @@ func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm 
 		if beat.Version == "" {
 			beat.Version = getPatchVersion()
 		}
-
 
 		if currentDeviceConfig.Enabled && currentDeviceConfig.Host != "" {
 			// device is connected to an audio server
@@ -249,7 +254,12 @@ func handleDeviceUpdate(beat *client.DeviceHeartbeat, credentials client.AgentCr
 		updateServiceConfigs(config, strings.Replace(beat.MAC, ":", "", -1), false)
 
 		// shutdown or restart managed services
+		ac.TeardownClient()
 		restartAllServices(config, false)
+		// jack client will error when the server is only using Jamulus
+		if config.Type != client.Jamulus {
+			ac.SetupClient()
+		}
 	}
 
 	// update device status in avahi service config, if necessary
