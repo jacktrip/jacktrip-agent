@@ -257,7 +257,7 @@ func handleDeviceUpdate(beat *client.DeviceHeartbeat, credentials client.AgentCr
 		ac.TeardownClient()
 		restartAllServices(config, false)
 		// jack client will error when the server is only using Jamulus
-		if config.Type != client.Jamulus {
+		if config.Enabled && config.Host != "" && config.Type != "" && config.Type != client.Jamulus {
 			ac.SetupClient()
 		}
 	}

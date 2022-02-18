@@ -126,6 +126,7 @@ func (ac *AutoConnector) isConnected(src, dest string) bool {
 
 // connectPorts establishes a directed connection between two JACK ports
 func (ac *AutoConnector) connectPorts(src, dest string) {
+
 	if ac.isConnected(src, dest) {
 		return
 	}
@@ -145,7 +146,7 @@ func (ac *AutoConnector) connectSingleJackTripZitaPort(port *jack.Port) {
 	//data := strings.SplitN(suffix, "_", 2)
 	//clientChannelNum, _ := strconv.Atoi(data[len(data)-1])
 	isInput := true
-	if strings.HasPrefix(suffix, "send_") {
+	if strings.HasPrefix(suffix, "playback_") {
 		isInput = false
 	}
 	// TODO: Remove this hardcoded check
