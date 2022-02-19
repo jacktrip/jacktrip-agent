@@ -20,101 +20,91 @@ const (
 )
 
 type DeviceMixingManager struct {
-	CurrentCaptureDevices  []string
-	CurrentPlaybackDevices []string
+	CurrentCaptureDevices  map[string]bool
+	CurrentPlaybackDevices map[string]bool
 	// JackClient             *jack.Client
 }
 
 func (dmm *DeviceMixingManager) Reset() {
+	for device := range dmm.CurrentCaptureDevices {
+		serviceName := fmt.Sprintf(ZitaServiceNameTemplate, "a2j", device)
+		StopZitaService(serviceName)
+	}
+
+	for device := range dmm.CurrentPlaybackDevices {
+		serviceName := fmt.Sprintf(ZitaServiceNameTemplate, "j2a", device)
+		StopZitaService(serviceName)
+	}
+
 	// reinitialize device lists
-	dmm.CurrentCaptureDevices = []string{}
-	dmm.CurrentPlaybackDevices = []string{}
+	dmm.CurrentCaptureDevices = map[string]bool{}
+	dmm.CurrentPlaybackDevices = map[string]bool{}
 
 	// detect and kill any lost Zita systemd services
-	cmd := `sudo systemctl --type service | grep zita | awk '/.*\.service/ {print $1}'`
-	out, err := exec.Command("sh", "-c", cmd).Output()
-	if err != nil {
-		log.Error(err, "error while looking for lost zita services")
-	}
+	/*
+		cmd := `sudo systemctl --type service | grep zita | awk '/.*\.service/ {print $1}'`
+		out, err := exec.Command("sh", "-c", cmd).Output()
+		if err != nil {
+			log.Error(err, "error while looking for lost zita services")
+		}
 
-	lostServices := strings.Split(string(out), "\n")
-	for _, serviceName := range lostServices {
-		StopZitaService(serviceName)
-	}
+		lostServices := strings.Split(string(out), "\n")
+		for _, serviceName := range lostServices {
+			StopZitaService(serviceName)
+		}
+	*/
 }
 
-// func (dmm *DeviceMixingManager) init() bool {
-// 	client, status := jack.ClientOpen("agentDeviceMixingManager", jack.NoStartServer)
-// 	if status != 0 {
-// 		log.Error(jack.StrError(status), "Initializing a Jack client failed")
-// 		return false
-// 	}
-// 	dmm.JackClient = client
-// 	log.Info("Initialized Jack Client in the Device Mixing Manager")
-// 	return true
-// }
-
+// TODO: We should probably have error handling here
 func (dmm *DeviceMixingManager) SynchronizeConnections() {
-	// 1. initialize a Go Jack client
-	// if dmm.JackClient == nil {
-	// 	if result := dmm.init(); result == false {
-	// 		return
-	// 	}
-	// }
+	// 1. fetch the fresh capture devices list in this cycle
+	activeCaptureDevices := getCaptureDeviceNames()
 
-	// 2. fetch the fresh capture devices list in this cycle
-	newCaptureDevices := getCaptureDeviceNames()
-
-	// 3. get diff between the current devices list and the new devices list. Then, clean up any stale devices
-	var tempCaptureDevices []string
-	for _, device := range dmm.CurrentCaptureDevices {
-		// if the device is current, continue
-		if contains(newCaptureDevices, device) {
-			tempCaptureDevices = append(tempCaptureDevices, device)
-			continue
+	// 2. get diff between the current devices list and the new devices list. Then, clean up any stale devices
+	var newCaptureDevices []string
+	for _, device := range activeCaptureDevices {
+		if _, ok := dmm.CurrentCaptureDevices[device]; !ok {
+			newCaptureDevices = append(newCaptureDevices, device)
 		}
-
-		// if the device is stale, stop its systemd service and disconnect ports
-		serviceName := fmt.Sprintf(ZitaA2JServiceNameTemplate, device)
-		StopZitaService(serviceName)
-		// dmm.disconnectZitaPorts("a2j", device)
 	}
-	dmm.CurrentCaptureDevices = tempCaptureDevices
+	for device := range dmm.CurrentCaptureDevices {
+		if !contains(activeCaptureDevices, device) {
+			serviceName := fmt.Sprintf(ZitaServiceNameTemplate, "a2j", device)
+			StopZitaService(serviceName)
+			delete(dmm.CurrentCaptureDevices, device)
+		}
+	}
 
-	// 4. synchronize new capture devices
+	// 3. synchronize new capture devices
 	for _, device := range newCaptureDevices {
-		if !contains(dmm.CurrentCaptureDevices, device) {
-			if err := dmm.connectZita("a2j", device); err == nil {
-				dmm.CurrentCaptureDevices = append(dmm.CurrentCaptureDevices, device)
-			}
+		if err := dmm.connectZita("a2j", device); err == nil {
+			dmm.CurrentCaptureDevices[device] = true
 		}
 	}
 
-	// 5. fetch the playback capture devices list in this cycle
-	newPlaybackDevices := getPlaybackDeviceNames()
+	// 4. fetch the playback capture devices list in this cycle
+	activePlaybackDevices := getPlaybackDeviceNames()
 
-	// 6. get diff between current devices and the new devices
-	var tempPlaybackDevices []string
-	for _, device := range dmm.CurrentPlaybackDevices {
-		// if the device is current, continue
-		if contains(newPlaybackDevices, device) {
-			tempPlaybackDevices = append(tempPlaybackDevices, device)
-			continue
+	// 5. get diff between current devices and the new devices
+	var newPlaybackDevices []string
+	for _, device := range activePlaybackDevices {
+		if _, ok := dmm.CurrentPlaybackDevices[device]; !ok {
+			newPlaybackDevices = append(newPlaybackDevices, device)
 		}
-
-		// if the device is stale, stop its systemd service and disconnect ports
-		serviceName := fmt.Sprintf(ZitaJ2AServiceNameTemplate, device)
-		StopZitaService(serviceName)
-		// dmm.disconnectZitaPorts("j2a", device)
 	}
-	dmm.CurrentPlaybackDevices = tempPlaybackDevices
+	for device := range dmm.CurrentPlaybackDevices {
+		if !contains(activePlaybackDevices, device) {
+			serviceName := fmt.Sprintf(ZitaServiceNameTemplate, "j2a", device)
+			StopZitaService(serviceName)
+			delete(dmm.CurrentPlaybackDevices, device)
+		}
+	}
 
-	// 7. synchronize new playback devices
+	// 6. synchronize new playback devices
 	for _, device := range newPlaybackDevices {
-		if !contains(dmm.CurrentPlaybackDevices, device) {
-			if err := dmm.connectZita("j2a", device); err == nil {
-				dmm.CurrentPlaybackDevices = append(dmm.CurrentPlaybackDevices, device)
-			}
+		if err := dmm.connectZita("j2a", device); err == nil {
+			dmm.CurrentPlaybackDevices[device] = true
+
 		}
 	}
 }
@@ -137,146 +127,8 @@ func (dmm *DeviceMixingManager) connectZita(mode string, device string) error {
 		log.Error(err, err.Error())
 		return err
 	}
-	// get port names
-	// hubServerPort := "hubserver:send_1"
-	// if mode == "j2a" {
-	// 	hubServerPort = "hubserver:receive_1"
-	// }
-
-	// zitaPort := fmt.Sprintf("%s-%s:capture_1", mode, device)
-	// if mode == "j2a" {
-	// 	zitaPort = fmt.Sprintf("%s-%s:playback_1", mode, device)
-	// }
-
-	// // // write a systemd config file for Jack_connect parameters
-	// // if err := writeJackConnectConfig(hubServerPort, zitaPort, mode, device); err != nil {
-	// // 	log.Error(err, err.Error())
-	// // 	return err
-	// // }
-
-	// /*
-	// Start Jack Connect as a transient systemd-run unit
-	// Note:
-	// - Jack Connect command exits unlike the above Zita command. Therefore, should be treated as a transient unit
-	// */
-	// // if err := StartJackConnectUnit(mode, device); err != nil {
-	// // 	log.Error(err, err.Error())
-	// // 	return err
-	// // }
-
-	// // var out bytes.Buffer
-	// // var stderr bytes.Buffer
-
-	// time.Sleep(3 * time.Second)
-	// // cmd := fmt.Sprintf(`sudo -u jacktrip jack_connect %s %s`, hubServerPort, zitaPort)
-	// // out, _ := exec.Command("sh", "-c", cmd).Output()
-
-	// if dmm.JackClient != nil {
-	// 	x := dmm.JackClient.GetName()
-	// 	log.Info(fmt.Sprintf("*********************** %#v", x))
-	// 	time.Sleep(1 * time.Second)
-
-	// 	y := dmm.JackClient.GetPorts("", "", 0)
-	// 	log.Info(fmt.Sprintf("123123*********************** %#v", y))
-	// }
-
-	// if mode == "a2j" {
-	// 	return dmm.connectPorts(zitaPort, hubServerPort)
-	// }
-	// return dmm.connectPorts(hubServerPort, zitaPort)
-
-	// cmd := exec.Command("sudo", "-u", "jacktrip", "jack_connect", hubServerPort, zitaPort)
-	// cmd.Stdout = &out
-	// cmd.Stderr = &stderr
-
-	// if err := cmd.Run(); err != nil {
-	// 	log.Error(err, err.Error())
-	// 	log.Info(stderr.String())
-	// 	return err
-
-	// log.Info(out.String())
-	// log.Info(err.Error())
-
-	// // stderr, err := cmd.StderrPipe()
-	// // if err != nil {
-	// // 	log.Fatal(err)
-	// // }
-
-	// err := cmd.Run()
-	// if err != nil {
-	//
-	// 	log.Info(fmt.Sprintf("Command finished with error: %v", err))
-	// }
-
-	// // if err := cmd.Start(); err != nil {
-	// // 	log.Error(err, err.Error())
-	// // 	return err
-	// // }
-
-	// // slurp, _ := io.ReadAll(stderr)
-	// // fmt.Printf("%s\n", slurp)
-
-	// // if err := cmd.Wait(); err != nil {
-	// // 	log.Fatal(err)
-	// // }
 	return nil
 }
-
-// func (dmm *DeviceMixingManager) disconnectZitaPorts(mode string, device string) error {
-// 	hubServerPort := "hubserver:send_1"
-// 	if mode == "j2a" {
-// 		hubServerPort = "hubserver:receive_1"
-// 	}
-
-// 	zitaPort := fmt.Sprintf("%s-%s:capture_1", mode, device)
-// 	if mode == "j2a" {
-// 		zitaPort = fmt.Sprintf("%s-%s:playback_1", mode, device)
-// 	}
-
-// 	return dmm.disconnectPorts(hubServerPort, zitaPort)
-// }
-
-// func (dmm *DeviceMixingManager) disconnectPorts(src, dest string) error {
-// 	if !dmm.isConnected(src, dest) {
-// 		return nil
-// 	}
-
-// 	code := dmm.JackClient.Disconnect(src, dest)
-// 	switch code {
-// 	case 0:
-// 		log.Info("Disconnected JACK ports", "src", src, "dest", dest)
-// 	default:
-// 		log.Error(jack.StrError(code), "Unexpected error disconnecting JACK ports")
-// 		return jack.StrError(code)
-// 	}
-// 	return nil
-// }
-
-// func (dmm *DeviceMixingManager) connectPorts(src, dest string) error {
-// 	if dmm.isConnected(src, dest) {
-// 		return nil
-// 	}
-
-// 	code := dmm.JackClient.Connect(src, dest)
-// 	switch code {
-// 	case 0:
-// 		log.Info("Connected JACK ports", "src", src, "dest", dest)
-// 	default:
-// 		log.Error(jack.StrError(code), "Unexpected error connecting JACK ports")
-// 		return jack.StrError(code)
-// 	}
-// 	return nil
-// }
-
-// func (dmm *DeviceMixingManager) isConnected(src, dest string) bool {
-// 	p := dmm.JackClient.GetPortByName(src)
-// 	for _, conn := range p.GetConnections() {
-// 		if conn == dest {
-// 			return true
-// 		}
-// 	}
-// 	return false
-// }
 
 func writeZitaConfig(numChannel int, rate int, mode string, device string) error {
 	// format a path with a device and mode specific name
@@ -287,15 +139,6 @@ func writeZitaConfig(numChannel int, rate int, mode string, device string) error
 	zitaConfig := fmt.Sprintf(ZitaConfigTemplate, device, numChannel, rate, connectionName)
 	return writeConfig(path, zitaConfig)
 }
-
-// func writeJackConnectConfig(port1 string, port2 string, mode string, device string) error {
-// 	// format a path with a device and mode specific name
-// 	path := fmt.Sprintf(PathToJackConnectConfig, fmt.Sprintf("%s-%s", mode, device))
-
-// 	// format a config template
-// 	jackConnectConfig := fmt.Sprintf(JackConnectTemplate, port1, port2)
-// 	return writeConfig(path, jackConnectConfig)
-// }
 
 func writeConfig(path string, content string) error {
 	if err := ioutil.WriteFile(path, []byte(content), 0644); err != nil {
@@ -349,14 +192,4 @@ func contains(lst []string, target string) bool {
 		}
 	}
 	return false
-}
-
-func remove(lst []string, targetIndex int) []string {
-	var newList []string
-	for index, element := range lst {
-		if index != targetIndex {
-			newList = append(newList, element)
-		}
-	}
-	return newList
 }
