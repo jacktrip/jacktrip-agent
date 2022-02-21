@@ -55,6 +55,9 @@ type ServerConfig struct {
 	// SuperCollider (sclang) source code to run for mixing audio
 	MixCode string `json:"mixCode" db:"mix_code"`
 
+	// max number of musicians allowed in server
+	MaxMusicians int `json:"maxMusicians" db:"max_musicians"`
+
 	// hostname of server
 	Host string `json:"serverHost" db:"host"`
 
