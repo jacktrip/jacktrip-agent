@@ -55,6 +55,7 @@ const (
 	PathToAsoundCards = "/proc/asound/cards"
 )
 
+var ac *AutoConnector
 var soundDeviceName = ""
 var soundDeviceType = ""
 var lastDeviceStatus = "starting"
@@ -125,9 +126,17 @@ func runOnDevice(apiOrigin string) {
 	wg.Add(1)
 	go wsm.recvConfigHandler(&wg)
 
+	// Start JACK autoconnector
+	ac = NewAutoConnector()
+	wg.Add(1)
+	go ac.Run(&wg)
+
+	dmm := DeviceMixingManager{}
+	dmm.Reset()
+
 	// start sending heartbeats and updating agent configs
 	wg.Add(1)
-	go sendDeviceHeartbeats(&wg, &beat, &wsm)
+	go sendDeviceHeartbeats(&wg, &beat, &wsm, &dmm)
 
 	// Start a config handler to update config changes
 	wg.Add(1)
@@ -163,7 +172,7 @@ func deviceConfigUpdateHandler(wg *sync.WaitGroup, beat *client.DeviceHeartbeat,
 }
 
 // sendDeviceHeartbeats sends device heartbeat messages to the backend api, and receives config updates
-func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager) {
+func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager, dmm *DeviceMixingManager) {
 	defer wg.Done()
 	log.Info("Sending device heartbeats")
 	firstHeartbeat := true
@@ -176,6 +185,10 @@ func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm 
 
 		if currentDeviceConfig.Enabled && currentDeviceConfig.Host != "" {
 			// device is connected to an audio server
+
+			if !firstHeartbeat {
+				dmm.SynchronizeConnections()
+			}
 
 			// Measure connection latency to the audio server
 			MeasurePingStats(beat, wsm.APIOrigin, currentDeviceConfig.Host, currentDeviceConfig.AuthToken) // blocks for 5 seconds instead of time sleep
@@ -193,6 +206,7 @@ func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm 
 
 		} else {
 			// device is not connected to an audio server
+			dmm.Reset()
 
 			if firstHeartbeat {
 				// don't sleep before sending first heartbeat
@@ -240,7 +254,12 @@ func handleDeviceUpdate(beat *client.DeviceHeartbeat, credentials client.AgentCr
 		updateServiceConfigs(config, strings.Replace(beat.MAC, ":", "", -1), false)
 
 		// shutdown or restart managed services
+		ac.TeardownClient()
 		restartAllServices(config, false)
+		// jack client will error when the server is only using Jamulus
+		if config.Enabled && config.Host != "" && config.Type != "" && config.Type != client.Jamulus {
+			ac.SetupClient()
+		}
 	}
 
 	// update device status in avahi service config, if necessary
