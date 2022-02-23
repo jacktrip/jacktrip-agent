@@ -37,7 +37,7 @@ const (
 	PathToAvahiServiceFile = "/tmp/avahi/services/jacktrip-agent.service"
 
 	// JackDeviceConfigTemplate is the template used to generate /tmp/default/jack file on raspberry pi devices
-	JackDeviceConfigTemplate = "JACK_OPTS=-dalsa -dhw:%s --rate %d --period %d\n"
+	JackDeviceConfigTemplate = "JACK_OPTS=-dalsa -d %s --rate %d --period %d\n"
 
 	// JackTripDeviceConfigTemplate is the template used to generate /tmp/default/jacktrip file  on raspberry pi devices
 	JackTripDeviceConfigTemplate = "JACKTRIP_OPTS=-t -z --udprt --receivechannels %d --sendchannels %d -C %s --peerport %d --bindport %d --clientname hubserver --remotename %s %s\n"
@@ -307,7 +307,11 @@ func getSoundDeviceName() string {
 		log.Error(err, "Unable to retrieve name of sound device")
 		panic(err)
 	}
-	return strings.TrimSpace(string(rawBytes))
+	name := strings.TrimSpace(string(rawBytes))
+	if name == "dummy" {
+		return name
+	}
+	return fmt.Sprintf("hw:%s", name)
 }
 
 // getSoundDeviceType retrieves alsa type for the sound device
