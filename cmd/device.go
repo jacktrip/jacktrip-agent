@@ -39,6 +39,9 @@ const (
 	// JackDeviceConfigTemplate is the template used to generate /tmp/default/jack file on raspberry pi devices
 	JackDeviceConfigTemplate = "JACK_OPTS=-dalsa -d %s --rate %d --period %d\n"
 
+	// JackDeviceNoAlsaConfigTemplate is the template used to generate /tmp/default/jack file on raspberry pi devices
+	JackDeviceNoAlsaConfigTemplate = "JACK_OPTS=-d %s --rate %d --period %d\n"
+
 	// JackTripDeviceConfigTemplate is the template used to generate /tmp/default/jacktrip file  on raspberry pi devices
 	JackTripDeviceConfigTemplate = "JACKTRIP_OPTS=-t -z --udprt --receivechannels %d --sendchannels %d -C %s --peerport %d --bindport %d --clientname hubserver --remotename %s %s\n"
 
