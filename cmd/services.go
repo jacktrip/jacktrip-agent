@@ -62,6 +62,9 @@ func updateServiceConfigs(config client.AgentConfig, remoteName string, isServer
 	updateJamulusIni(config, remoteName)
 
 	jackConfig = fmt.Sprintf(JackDeviceConfigTemplate, soundDeviceName, config.SampleRate, config.Period)
+	if soundDeviceName == "dummy" {
+		jackConfig = fmt.Sprintf(JackDeviceNoAlsaConfigTemplate, soundDeviceName, config.SampleRate, config.Period)
+	}
 
 	// configure limiter
 	if config.Limiter {
