@@ -180,6 +180,7 @@ func updateJamulusIni(config client.AgentConfig, remoteName string) {
 	writer.Flush()
 }
 
+// StartJackConnectUnit starts a jack connect service
 func StartJackConnectUnit(mode string, device string) error {
 	conn, err := dbus.New()
 	if err != nil {
@@ -195,6 +196,7 @@ func StartJackConnectUnit(mode string, device string) error {
 	return err
 }
 
+// StartZitaService starts a zita service
 func StartZitaService(serviceName string) error {
 	conn, err := dbus.New()
 	if err != nil {
@@ -209,6 +211,7 @@ func StartZitaService(serviceName string) error {
 	return err
 }
 
+// StopZitaService stops a running zita service
 func StopZitaService(serviceName string) error {
 	conn, err := dbus.New()
 	if err != nil {

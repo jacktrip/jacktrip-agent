@@ -5,26 +5,36 @@ import (
 	"io/ioutil"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
-	// "bytes"
+
+	"github.com/jacktrip/jacktrip-agent/pkg/client"
 )
 
 const (
-	PathToZitaConfig        = "/tmp/default/zita-%s-conf"
-	PathToJackConnectConfig = "/tmp/default/jack-connect-%s-conf"
-	ZitaConfigTemplate      = "ZITA_OPTS=-d hw:%s -c %d -r %d -j %s\n"
-	// JackConnectTemplate = "JACK_CONNECT_OPTS=%s %s\n"
+	// PathToZitaConfig is a systemd conf file path for zita
+	PathToZitaConfig           = "/tmp/default/zita-%s-conf"
+	// PathToJackConnectConfig is a systemd conf file path for jack-connect
+	PathToJackConnectConfig    = "/tmp/default/jack-connect-%s-conf"
+	// ZitaConfigTemplate is a set of parameters for zita systemd
+	ZitaConfigTemplate         = "ZITA_OPTS=-d hw:%s -c %d -r %d -j %s\n"
+	// ZitaA2JServiceNameTemplate uses a wildcard systemd conf file
 	ZitaA2JServiceNameTemplate = "zita-a2j-@%s.service"
+	// ZitaJ2AServiceNameTemplate uses a wildcard systemd conf file
 	ZitaJ2AServiceNameTemplate = "zita-j2a-@%s.service"
+	// ZitaServiceNameTemplate uses a wildcard systemd conf file
 	ZitaServiceNameTemplate    = "zita-%s-@%s.service"
 )
 
+// DeviceMixingManager keeps track of ephemeral states for Zita and Jack ports
 type DeviceMixingManager struct {
 	CurrentCaptureDevices  map[string]bool
 	CurrentPlaybackDevices map[string]bool
-	// JackClient             *jack.Client
+	DeviceCardMapping      map[string]int
+	DeviceStream0Mapping   map[string][]string
 }
 
+// Reset initializes DeviceMixingManager's state
 func (dmm *DeviceMixingManager) Reset() {
 	for device := range dmm.CurrentCaptureDevices {
 		serviceName := fmt.Sprintf(ZitaServiceNameTemplate, "a2j", device)
@@ -39,24 +49,16 @@ func (dmm *DeviceMixingManager) Reset() {
 	// reinitialize device lists
 	dmm.CurrentCaptureDevices = map[string]bool{}
 	dmm.CurrentPlaybackDevices = map[string]bool{}
-
-	// detect and kill any lost Zita systemd services
-	/*
-		cmd := `sudo systemctl --type service | grep zita | awk '/.*\.service/ {print $1}'`
-		out, err := exec.Command("sh", "-c", cmd).Output()
-		if err != nil {
-			log.Error(err, "error while looking for lost zita services")
-		}
-
-		lostServices := strings.Split(string(out), "\n")
-		for _, serviceName := range lostServices {
-			StopZitaService(serviceName)
-		}
-	*/
+	dmm.DeviceStream0Mapping = map[string][]string{}
+	dmm.DeviceCardMapping = map[string]int{}
 }
 
 // TODO: We should probably have error handling here
-func (dmm *DeviceMixingManager) SynchronizeConnections() {
+// SynchronizeConnections gets called every 5 seconds to synchronize all zita connections and Jack ports
+func (dmm *DeviceMixingManager) SynchronizeConnections(config client.AgentConfig) {
+	// 0. fetch the fresh devices to card number mappings
+	dmm.DeviceCardMapping = getDeviceToNumMappings()
+
 	// 1. fetch the fresh capture devices list in this cycle
 	activeCaptureDevices := getCaptureDeviceNames()
 
@@ -75,9 +77,18 @@ func (dmm *DeviceMixingManager) SynchronizeConnections() {
 		}
 	}
 
+	dmm.DeviceStream0Mapping = map[string][]string{}
 	// 3. synchronize new capture devices
 	for _, device := range newCaptureDevices {
-		if err := dmm.connectZita("a2j", device); err == nil {
+		// read card num; if card num doens't exist, don't connect
+		cardNum, ok := dmm.DeviceCardMapping[device]
+		if !ok {
+			continue
+		}
+		// read card stream0 using the card num
+		dmm.DeviceStream0Mapping[device] = readCardStream0(cardNum)
+
+		if err := dmm.connectZita("a2j", device, config); err == nil {
 			dmm.CurrentCaptureDevices[device] = true
 		}
 	}
@@ -102,16 +113,46 @@ func (dmm *DeviceMixingManager) SynchronizeConnections() {
 
 	// 6. synchronize new playback devices
 	for _, device := range newPlaybackDevices {
-		if err := dmm.connectZita("j2a", device); err == nil {
-			dmm.CurrentPlaybackDevices[device] = true
+		// read card num; if card num doens't exist, don't connect
+		cardNum, ok := dmm.DeviceCardMapping[device]
+		if !ok {
+			continue
+		}
 
+		// if device stream0 doesn't exist, read card stream0
+		_, ok := dmm.DeviceStream0Mapping[device]
+		if !ok {
+			dmm.DeviceStream0Mapping[device] = readCardStream0(cardNum)
+		}
+
+		if err := dmm.connectZita("j2a", device, config); err == nil {
+			dmm.CurrentPlaybackDevices[device] = true
 		}
 	}
 }
 
-func (dmm *DeviceMixingManager) connectZita(mode string, device string) error {
+func (dmm *DeviceMixingManager) connectZita(mode string, device string, config client.AgentConfig) error {
+	// check if the device has support for the server sampleRate
+	stream0, ok := dmm.DeviceStream0Mapping[device]
+	if !ok {
+		log.Info("Stream0 info does not exist", "device", device)
+		return nil
+	}
+
+	channelNum := -1
+	if mode == "a2j" {
+		channelNum = getCaptureChannelNum(stream0, config.SampleRate)
+	} else {
+		channelNum = getPlaybackChannelNum(stream0, config.SampleRate)
+	}
+
+	if channelNum == -1 {
+		log.Info(fmt.Sprintf("Channel num was not found for %s. Connection cannot not be established.", device))
+		return nil
+	}
+
 	// write a systemd config file for Zita Bridge parameters
-	if err := writeZitaConfig(1, 48000, mode, device); err != nil {
+	if err := writeZitaConfig(channelNum, config.SampleRate, mode, device); err != nil {
 		log.Error(err, err.Error())
 		return err
 	}
@@ -127,6 +168,7 @@ func (dmm *DeviceMixingManager) connectZita(mode string, device string) error {
 		log.Error(err, err.Error())
 		return err
 	}
+
 	return nil
 }
 
@@ -156,20 +198,99 @@ func getCaptureDeviceNames() []string {
 		return names
 	}
 
-	names = extractNames(string(out))
-	return names
+	return extractNames(string(out))
 }
 
 func getPlaybackDeviceNames() []string {
-	var names []string
 	out, err := exec.Command("aplay", "-l").Output()
 	if err != nil {
 		log.Error(err, "Unable to retrieve playback device names")
 		return nil
 	}
 
-	names = extractNames(string(out))
-	return names
+	return extractNames(string(out))
+}
+
+func getDeviceToNumMappings() map[string]int {
+	out, err := exec.Command("cat", "/proc/asound/cards").Output()
+	if err != nil {
+		log.Error(err, "Unable to retrieve playback device names")
+		return nil
+	}
+
+	return extractCardNum(string(out))
+}
+
+func readCardStream0(cardNum int) []string {
+	var output []string
+	out, err := exec.Command("cat", fmt.Sprintf("/proc/asound/card%d/stream0", cardNum)).Output()
+	if err != nil {
+		log.Error(err, fmt.Sprintf("Unable to retrieve card information for card %d", cardNum))
+		return output
+	}
+	return strings.Split(string(out), "\n")
+}
+
+func getPlaybackChannelNum(sentences []string, sampleRate int) int {
+	channelNum := -1
+	for i, sentence := range sentences {
+		// look for the playback section
+		if strings.Contains(sentence, "Playback:") {
+			for j := i + 1; j < len(sentences); j++ {
+				currSentence := sentences[j]
+
+				// stop if we see "Capture" which means we haven't found the right channel
+				if strings.Contains(currSentence, "Capture:") {
+					return channelNum
+				}
+
+				// if we found our target sampleRate, go look for the number of channels
+				if strings.Contains(currSentence, "Rates:") && strings.Contains(currSentence, fmt.Sprintf("%d", sampleRate)) {
+					r, _ := regexp.Compile(`Channels: (\d)`)
+					for ii := j - 1; ii >= max(0, ii-4); ii-- {
+						currSentence := sentences[ii]
+						subMatch := r.FindStringSubmatch(currSentence)
+						if len(subMatch) > 1 {
+							i, err := strconv.Atoi(subMatch[1])
+							if err == nil {
+								channelNum = i
+							}
+						}
+					}
+				}
+
+			}
+		}
+	}
+	return channelNum
+}
+
+func getCaptureChannelNum(sentences []string, sampleRate int) int {
+	channelNum := -1
+	for i, sentence := range sentences {
+		// look for the capture section
+		if strings.Contains(sentence, "Capture:") {
+			for j := i + 1; j < len(sentences); j++ {
+				currSentence := sentences[j]
+
+				// if we found our target sampleRate, go look for the number of channels
+				if strings.Contains(currSentence, "Rates:") && strings.Contains(currSentence, fmt.Sprintf("%d", sampleRate)) {
+					r, _ := regexp.Compile(`Channels: (\d)`)
+					for ii := j - 1; ii >= max(0, ii-4); ii-- {
+						currSentence := sentences[ii]
+						subMatch := r.FindStringSubmatch(currSentence)
+						if len(subMatch) > 1 {
+							i, err := strconv.Atoi(subMatch[1])
+							if err == nil {
+								channelNum = i
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return channelNum
 }
 
 func extractNames(target string) []string {
@@ -185,6 +306,22 @@ func extractNames(target string) []string {
 	return names
 }
 
+func extractCardNum(target string) map[string]int {
+	nameToNum := map[string]int{}
+	sentences := strings.Split(target, "\n")
+	r, _ := regexp.Compile(`^ (\d) \[(\w+)\s*\]`)
+	for _, sentence := range sentences {
+		result := r.FindAllStringSubmatch(sentence, -1)
+		if len(result) == 1 {
+			num, err := strconv.Atoi(result[0][1])
+			if err == nil {
+				nameToNum[result[0][2]] = num
+			}
+		}
+	}
+	return nameToNum
+}
+
 func contains(lst []string, target string) bool {
 	for _, item := range lst {
 		if target == item {
@@ -192,4 +329,11 @@ func contains(lst []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func max(a, b int) int {
+	if a < b {
+		return b
+	}
+	return a
 }

@@ -190,7 +190,7 @@ func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm 
 			// device is connected to an audio server
 
 			if !firstHeartbeat {
-				dmm.SynchronizeConnections()
+				dmm.SynchronizeConnections(currentDeviceConfig)
 			}
 
 			// Measure connection latency to the audio server
