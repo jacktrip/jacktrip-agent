@@ -10,6 +10,10 @@ jobs:
     name: Verify code
     runs-on: ubuntu-20.04
     steps:
+    - name: Setup QEMU
+      uses: docker/setup-qemu-action@v1
+    - name: Setup docker buildx
+      uses: docker/setup-buildx-action@v1
     - name: Checkout code
       uses: actions/checkout@v2
     - name: Setup golang
@@ -42,13 +46,13 @@ jobs:
         report_paths: 'artifacts/results-small.xml'
     - name: Build
       run: |
-        make agent-amd64
+        make agent-arm
         GIT_SHA=`git rev-parse --short=12 HEAD`
-        FILENAME=jacktrip-agent-amd64-${GIT_SHA}.tar.gz
-        tar cvzf ${FILENAME} ./jacktrip-agent-amd64
+        FILENAME=jacktrip-agent-arm-${GIT_SHA}.tar.gz
+        tar cvzf ${FILENAME} ./jacktrip-agent-arm
         sha256sum ${FILENAME} | tee -a ${FILENAME}.sha256
     - name: Archive artifacts
       uses: actions/upload-artifact@v2
       with:
-        name: jacktrip-agent-amd64
-        path: jacktrip-agent-amd64-*
+        name: jacktrip-agent-arm
+        path: jacktrip-agent-arm-*
