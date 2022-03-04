@@ -142,17 +142,20 @@ func (ac *AutoConnector) connectPorts(src, dest string) {
 // connectSingleJackTripZitaPort establishes individual JackTrip<->zita audio connections
 func (ac *AutoConnector) connectSingleJackTripZitaPort(port *jack.Port) {
 	suffix := port.GetShortName()
-	// TODO: Add support for multiple channels
-	//data := strings.SplitN(suffix, "_", 2)
-	//clientChannelNum, _ := strconv.Atoi(data[len(data)-1])
+
 	isInput := true
 	if strings.HasPrefix(suffix, "playback_") {
 		isInput = false
 	}
-	// TODO: Remove this hardcoded check
-	//clientName := port.GetClientName()
-	//serverChannel := ac.getServerChannel(clientName, clientChannelNum)
+
 	serverPortName := ac.getServerPortName(1, isInput)
+	if strings.HasSuffix(port.GetName(), "_2") {
+		serverPortName = ac.getServerPortName(2, isInput)
+		if !ac.isValidPort(serverPortName) {
+			serverPortName = ac.getServerPortName(1, isInput)
+		}
+	}
+
 	if ac.isValidPort(serverPortName) {
 		if isInput {
 			ac.connectPorts(port.GetName(), serverPortName)

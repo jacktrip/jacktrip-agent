@@ -13,17 +13,17 @@ import (
 
 const (
 	// PathToZitaConfig is a systemd conf file path for zita
-	PathToZitaConfig           = "/tmp/default/zita-%s-conf"
+	PathToZitaConfig = "/tmp/default/zita-%s-conf"
 	// PathToJackConnectConfig is a systemd conf file path for jack-connect
-	PathToJackConnectConfig    = "/tmp/default/jack-connect-%s-conf"
+	PathToJackConnectConfig = "/tmp/default/jack-connect-%s-conf"
 	// ZitaConfigTemplate is a set of parameters for zita systemd
-	ZitaConfigTemplate         = "ZITA_OPTS=-d hw:%s -c %d -r %d -j %s\n"
+	ZitaConfigTemplate = "ZITA_OPTS=-d hw:%s -c %d -r %d -j %s\n"
 	// ZitaA2JServiceNameTemplate uses a wildcard systemd conf file
 	ZitaA2JServiceNameTemplate = "zita-a2j-@%s.service"
 	// ZitaJ2AServiceNameTemplate uses a wildcard systemd conf file
 	ZitaJ2AServiceNameTemplate = "zita-j2a-@%s.service"
 	// ZitaServiceNameTemplate uses a wildcard systemd conf file
-	ZitaServiceNameTemplate    = "zita-%s-@%s.service"
+	ZitaServiceNameTemplate = "zita-%s-@%s.service"
 )
 
 // DeviceMixingManager keeps track of ephemeral states for Zita and Jack ports
@@ -120,7 +120,7 @@ func (dmm *DeviceMixingManager) SynchronizeConnections(config client.AgentConfig
 		}
 
 		// if device stream0 doesn't exist, read card stream0
-		_, ok := dmm.DeviceStream0Mapping[device]
+		_, ok = dmm.DeviceStream0Mapping[device]
 		if !ok {
 			dmm.DeviceStream0Mapping[device] = readCardStream0(cardNum)
 		}
