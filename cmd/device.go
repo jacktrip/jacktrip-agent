@@ -147,6 +147,10 @@ func deviceConfigUpdateHandler(wg *sync.WaitGroup, beat *client.DeviceHeartbeat,
 			log.Info("Config channel is closed")
 			return
 		}
+
+		// just copy over parameters that we want to silently ignore
+		currentDeviceConfig.Broadcast = newDeviceConfig.Broadcast
+
 		if newDeviceConfig != currentDeviceConfig {
 			// remove secrets before logging
 			sanitizedDeviceConfig := newDeviceConfig
