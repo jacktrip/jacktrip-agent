@@ -34,7 +34,7 @@ func TestServerConfig(t *testing.T) {
 	var target ServerConfig
 
 	// Parse JSON into ServerConfig struct
-	raw = `{"type": "JackTrip+Jamulus", "mixBranch": "main", "mixCode": "echo hi", "serverHost": "a.b.com", "serverPort": 8000, "sampleRate": 96000, "stereo": true, "loopback": false, "enabled": true}`
+	raw = `{"type": "JackTrip+Jamulus", "mixBranch": "main", "mixCode": "echo hi", "serverHost": "a.b.com", "serverPort": 8000, "sampleRate": 96000, "stereo": true, "broadcast": 1, "loopback": false, "enabled": true}`
 	target = ServerConfig{}
 	json.Unmarshal([]byte(raw), &target)
 	assert.Equal(JackTripJamulus, target.Type)
@@ -43,6 +43,7 @@ func TestServerConfig(t *testing.T) {
 	assert.Equal("a.b.com", target.Host)
 	assert.Equal(8000, target.Port)
 	assert.Equal(96000, target.SampleRate)
+	assert.Equal(Public, target.Broadcast)
 	assert.Equal(true, bool(target.Stereo))
 	assert.Equal(false, bool(target.LoopBack))
 	assert.Equal(true, bool(target.Enabled))
