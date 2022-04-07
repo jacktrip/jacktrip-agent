@@ -82,6 +82,9 @@ type AgentConfig struct {
 
 	// authorization token used by jacktrip-agent to access studio servers
 	AuthToken string `json:"authToken" db:"auth_token"`
+
+	// timestamp when the server will automatically be paused
+	ExpiresAt time.Time `json:"expiresAt" db:"expires_at"`
 }
 
 // PingStats defines a ping statistics to an audio server

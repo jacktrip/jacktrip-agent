@@ -150,6 +150,7 @@ func deviceConfigUpdateHandler(wg *sync.WaitGroup, beat *client.DeviceHeartbeat,
 
 		// just copy over parameters that we want to silently ignore
 		currentDeviceConfig.Broadcast = newDeviceConfig.Broadcast
+		currentDeviceConfig.ExpiresAt = newDeviceConfig.ExpiresAt
 
 		if newDeviceConfig != currentDeviceConfig {
 			// remove secrets before logging
