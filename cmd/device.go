@@ -134,23 +134,25 @@ func runOnDevice(apiOrigin string) {
 	wg.Add(1)
 	go ac.Run(&wg)
 
-	dmm := DeviceMixingManager{}
-	dmm.Reset()
+	// Start device mixer
+	dmm := NewDeviceMixingManager()
+	wg.Add(1)
+	go dmm.Run(&wg)
 
 	// start sending heartbeats and updating agent configs
 	wg.Add(1)
-	go sendDeviceHeartbeats(&wg, &beat, &wsm, &dmm)
+	go sendDeviceHeartbeats(&wg, &beat, &wsm, dmm)
 
 	// Start a config handler to update config changes
 	wg.Add(1)
-	go deviceConfigUpdateHandler(&wg, &beat, &wsm)
+	go deviceConfigUpdateHandler(&wg, &beat, &wsm, dmm)
 
 	// wait for everything to complete
 	wg.Wait()
 }
 
 // deviceConfigUpdateHandler receives and processes device config updates
-func deviceConfigUpdateHandler(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager) {
+func deviceConfigUpdateHandler(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager, dmm *DeviceMixingManager) {
 	defer wg.Done()
 	log.Info("Starting deviceConfigUpdateHandler")
 	for {
@@ -174,7 +176,7 @@ func deviceConfigUpdateHandler(wg *sync.WaitGroup, beat *client.DeviceHeartbeat,
 			if wsm.IsInitialized && (!bool(newDeviceConfig.Enabled) || newDeviceConfig.Host == "") {
 				wsm.CloseConnection()
 			}
-			handleDeviceUpdate(beat, wsm.Credentials, newDeviceConfig)
+			handleDeviceUpdate(beat, wsm.Credentials, newDeviceConfig, dmm)
 		}
 	}
 }
@@ -194,10 +196,6 @@ func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm 
 		if currentDeviceConfig.Enabled && currentDeviceConfig.Host != "" {
 			// device is connected to an audio server
 
-			if !firstHeartbeat {
-				dmm.SynchronizeConnections(currentDeviceConfig)
-			}
-
 			// Measure connection latency to the audio server
 			MeasurePingStats(beat, wsm.APIOrigin, currentDeviceConfig.Host, currentDeviceConfig.AuthToken) // blocks for 5 seconds instead of time sleep
 
@@ -214,7 +212,6 @@ func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm 
 
 		} else {
 			// device is not connected to an audio server
-			dmm.Reset()
 
 			if firstHeartbeat {
 				// don't sleep before sending first heartbeat
@@ -243,7 +240,7 @@ func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm 
 }
 
 // handleDeviceUpdate handles updates to device configuratiosn
-func handleDeviceUpdate(beat *client.DeviceHeartbeat, credentials client.AgentCredentials, config client.AgentConfig) {
+func handleDeviceUpdate(beat *client.DeviceHeartbeat, credentials client.AgentCredentials, config client.AgentConfig, dmm *DeviceMixingManager) {
 	// update current config sooner, so that other goroutines will have the most up-to-date version
 	lastDeviceConfig := currentDeviceConfig
 	currentDeviceConfig = config
@@ -259,14 +256,14 @@ func handleDeviceUpdate(beat *client.DeviceHeartbeat, credentials client.AgentCr
 		// more changes required -> reset everything
 
 		// update managed config files
-		updateServiceConfigs(config, strings.Replace(beat.MAC, ":", "", -1), false)
+		updateServiceConfigs(config, strings.Replace(beat.MAC, ":", "", -1))
 
 		// shutdown or restart managed services
 		ac.TeardownClient()
-		restartAllServices(config, false)
-		// jack client will error when the server is only using Jamulus
-		if config.Enabled && config.Host != "" && config.Type != "" && config.Type != client.Jamulus {
+		restartAllServices(config)
+		if config.Enabled && config.Host != "" && config.Type != "" {
 			ac.SetupClient()
+			dmm.Reset()
 		}
 	}
 

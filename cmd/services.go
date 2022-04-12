@@ -48,7 +48,7 @@ const (
 )
 
 // updateServiceConfigs is used to update config for managed systemd services
-func updateServiceConfigs(config client.AgentConfig, remoteName string, isServer bool) {
+func updateServiceConfigs(config client.AgentConfig, remoteName string) {
 
 	// assume auto queue unless > 0
 	jackTripExtraOpts := "-q auto"
@@ -182,22 +182,6 @@ func updateJamulusIni(config client.AgentConfig, remoteName string) {
 	writer.Flush()
 }
 
-// StartJackConnectUnit starts a jack connect service
-func StartJackConnectUnit(mode string, device string) error {
-	conn, err := dbus.New()
-	if err != nil {
-		log.Error(err, "Failed to connect to dbus")
-	}
-	defer conn.Close()
-
-	serviceName := fmt.Sprintf("jack-connect-%s-@%s.service", mode, device)
-	err = startTransientService(conn, serviceName)
-	if err != nil {
-		log.Error(err, "Unable to start transient service", "name", serviceName)
-	}
-	return err
-}
-
 // StartZitaService starts a zita service
 func StartZitaService(serviceName string) error {
 	conn, err := dbus.New()
@@ -237,7 +221,7 @@ func StopZitaService(serviceName string) error {
 }
 
 // restartAllServices is used to restart all of the managed systemd services
-func restartAllServices(config client.AgentConfig, isServer bool) {
+func restartAllServices(config client.AgentConfig) {
 	// create dbus connection to manage systemd units
 	conn, err := dbus.New()
 	if err != nil {
@@ -331,23 +315,5 @@ func startService(conn *dbus.Conn, name string) error {
 		return fmt.Errorf("failed to start %s: job status=%s", name, jobStatus)
 	}
 	log.Info("Finished starting managed service", "name", name)
-	return nil
-}
-
-func startTransientService(conn *dbus.Conn, name string) error {
-	log.Info("Starting transient service", "name", name)
-
-	// reschan := make(chan string)
-	// _, err := conn.StartTransientUnit(name, "replace", reschan)
-
-	// if err != nil {
-	// 	return fmt.Errorf("failed to start %s: job status=%s", name, err.Error())
-	// }
-
-	// jobStatus := <-reschan
-	// if jobStatus != "done" {
-	// 	return fmt.Errorf("failed to start %s: job status=%s", name, jobStatus)
-	// }
-	// log.Info("Finished starting transient service", "name", name)
 	return nil
 }

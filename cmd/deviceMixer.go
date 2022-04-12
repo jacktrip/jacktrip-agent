@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/jacktrip/jacktrip-agent/pkg/client"
 )
@@ -24,6 +26,8 @@ const (
 	ZitaJ2AServiceNameTemplate = "zita-j2a-@%s.service"
 	// ZitaServiceNameTemplate uses a wildcard systemd conf file
 	ZitaServiceNameTemplate = "zita-%s-@%s.service"
+	// DetectDevicesInterval is the time to sleep between detecting new devices, in seconds
+	DetectDevicesInterval = time.Second
 )
 
 // DeviceMixingManager keeps track of ephemeral states for Zita and Jack ports
@@ -32,30 +36,103 @@ type DeviceMixingManager struct {
 	CurrentPlaybackDevices map[string]bool
 	DeviceCardMapping      map[string]int
 	DeviceStream0Mapping   map[string][]string
+	mutex                  sync.Mutex
+	shutdown               chan struct{}
+}
+
+// NewReaper starts and returns a new instance of a cloud instance Reaper
+func NewDeviceMixingManager() *DeviceMixingManager {
+	// reinitialize device lists
+	dmm := &DeviceMixingManager{
+		CurrentCaptureDevices:  map[string]bool{},
+		CurrentPlaybackDevices: map[string]bool{},
+		DeviceStream0Mapping:   map[string][]string{},
+		DeviceCardMapping:      map[string]int{},
+		shutdown:               make(chan struct{}),
+	}
+	return dmm
+}
+
+// Stop is used to halt the mixer manager
+func (dmm *DeviceMixingManager) Stop() {
+	close(dmm.shutdown)
+}
+
+// Run a continuous loop performing device synchronization
+func (dmm *DeviceMixingManager) Run(wg *sync.WaitGroup) {
+	defer wg.Done()
+	// ticker used to process retries
+	//t := time.NewTicker(time.Second)
+	//defer t.Stop()
+
+	// loop until signal or channel is closed
+	for {
+		select {
+		case <-time.After(DetectDevicesInterval):
+			dmm.SynchronizeConnections(currentDeviceConfig)
+		case <-dmm.shutdown:
+			// exit if channel was closed
+			log.Info("Exiting due to shutdown request")
+			return
+		}
+	}
 }
 
 // Reset initializes DeviceMixingManager's state
 func (dmm *DeviceMixingManager) Reset() {
-	for device := range dmm.CurrentCaptureDevices {
-		serviceName := fmt.Sprintf(ZitaServiceNameTemplate, "a2j", device)
-		StopZitaService(serviceName)
+	dmm.mutex.Lock()
+	defer dmm.mutex.Unlock()
+
+	if len(dmm.CurrentCaptureDevices) > 0 {
+		for device := range dmm.CurrentCaptureDevices {
+			serviceName := fmt.Sprintf(ZitaServiceNameTemplate, "a2j", device)
+			StopZitaService(serviceName)
+		}
+		dmm.CurrentCaptureDevices = map[string]bool{}
 	}
 
-	for device := range dmm.CurrentPlaybackDevices {
-		serviceName := fmt.Sprintf(ZitaServiceNameTemplate, "j2a", device)
-		StopZitaService(serviceName)
+	if len(dmm.CurrentPlaybackDevices) > 0 {
+		for device := range dmm.CurrentPlaybackDevices {
+			serviceName := fmt.Sprintf(ZitaServiceNameTemplate, "j2a", device)
+			StopZitaService(serviceName)
+		}
+		dmm.CurrentPlaybackDevices = map[string]bool{}
 	}
 
 	// reinitialize device lists
-	dmm.CurrentCaptureDevices = map[string]bool{}
-	dmm.CurrentPlaybackDevices = map[string]bool{}
-	dmm.DeviceStream0Mapping = map[string][]string{}
-	dmm.DeviceCardMapping = map[string]int{}
+	if len(dmm.DeviceStream0Mapping) > 0 {
+		dmm.DeviceStream0Mapping = map[string][]string{}
+	}
+	if len(dmm.DeviceCardMapping) > 0 {
+		dmm.DeviceCardMapping = map[string]int{}
+	}
 }
 
 // TODO: We should probably have error handling here
-// SynchronizeConnections gets called every 5 seconds to synchronize all zita connections and Jack ports
+// SynchronizeConnections synchronizes all Zita <-> Jack port connections
 func (dmm *DeviceMixingManager) SynchronizeConnections(config client.AgentConfig) {
+	// do nothing when the device is not connect to server
+	if !config.Enabled || config.Host == "" {
+		dmm.Reset()
+		return
+	}
+
+	// Wait for jacktrip ports to be available before proceeding
+	if ac == nil || ac.JackClient == nil {
+		return
+	}
+	if config.Quality == 2 {
+		if !ac.isValidPort("hubserver:send_1") {
+			return
+		}
+	} else {
+		if !ac.isValidPort(jamulusInputLeft) {
+			return
+		}
+	}
+	dmm.mutex.Lock()
+	defer dmm.mutex.Unlock()
+
 	// 0. fetch the fresh devices to card number mappings
 	dmm.DeviceCardMapping = getDeviceToNumMappings()
 

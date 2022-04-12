@@ -163,7 +163,7 @@ func (ac *AutoConnector) connectPorts(src, dest string) {
 	case 0:
 		log.Info("Connected JACK ports", "src", src, "dest", dest)
 	default:
-		log.Error(jack.StrError(code), "Unexpected error connecting JACK ports")
+		log.Error(jack.StrError(code), "Unexpected error connecting JACK ports", "src", src, "dest", dest)
 	}
 }
 
@@ -287,7 +287,9 @@ func (ac *AutoConnector) connect(portID jack.PortId) error {
 		ac.connectAllZitaPorts()
 	} else {
 		port := ac.JackClient.GetPortById(portID)
-		match := ac.JTRegexp.MatchString(port.GetName())
+		name := port.GetName()
+		// TODO: Do we need to connect "system:" prefixed ports?
+		match := ac.JTRegexp.MatchString(name)
 		if match {
 			ac.connectSingleZitaPort(port)
 		}
