@@ -54,6 +54,8 @@ func updateServiceConfigs(config client.AgentConfig, remoteName string, isServer
 	jackTripExtraOpts := "-q auto"
 	if config.QueueBuffer > 0 {
 		jackTripExtraOpts = fmt.Sprintf("-q %d", config.QueueBuffer)
+	} else if config.QueueBuffer < 0 {
+		jackTripExtraOpts = fmt.Sprintf("-q %d --bufstrategy 3", (config.QueueBuffer * -1))
 	}
 
 	// create config opts from templates

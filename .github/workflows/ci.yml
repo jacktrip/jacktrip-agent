@@ -11,6 +11,10 @@ jobs:
     name: Verify code
     runs-on: ubuntu-20.04
     steps:
+    - name: Setup QEMU
+      uses: docker/setup-qemu-action@v1
+    - name: Setup docker buildx
+      uses: docker/setup-buildx-action@v1
     - name: Checkout code
       uses: actions/checkout@v2
     - name: Setup golang
@@ -42,4 +46,4 @@ jobs:
         check_name: Small tests
         report_paths: 'artifacts/results-small.xml'
     - name: Build
-      run: make agent-amd64
+      run: make agent-arm
