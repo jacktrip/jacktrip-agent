@@ -32,8 +32,8 @@ const (
 )
 
 // sendHTTPHeartbeat sends HTTP heartbeat to api and receives latest config
-func sendHTTPHeartbeat(beat interface{}, credentials client.AgentCredentials, apiOrigin string) (client.AgentConfig, error) {
-	var config client.AgentConfig
+func sendHTTPHeartbeat(beat interface{}, credentials client.AgentCredentials, apiOrigin string) (client.DeviceAgentConfig, error) {
+	var config client.DeviceAgentConfig
 
 	// update and encode heartbeat content
 	beatBytes, err := json.Marshal(beat)

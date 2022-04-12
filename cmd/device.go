@@ -58,7 +58,7 @@ const (
 var soundDeviceName = ""
 var soundDeviceType = ""
 var lastDeviceStatus = "starting"
-var currentDeviceConfig client.AgentConfig
+var currentDeviceConfig client.DeviceAgentConfig
 
 // runOnDevice is used to run jacktrip-agent on a raspberry pi device
 func runOnDevice(apiOrigin string) {
@@ -114,7 +114,7 @@ func runOnDevice(apiOrigin string) {
 
 	// start sending heartbeats and updating agent configs
 	wsm := WebSocketManager{
-		ConfigChannel:    make(chan client.AgentConfig, 100),
+		ConfigChannel:    make(chan client.DeviceAgentConfig, 100),
 		HeartbeatChannel: make(chan interface{}, 100),
 		APIOrigin:        apiOrigin,
 		Credentials:      credentials,
@@ -147,10 +147,6 @@ func deviceConfigUpdateHandler(wg *sync.WaitGroup, beat *client.DeviceHeartbeat,
 			log.Info("Config channel is closed")
 			return
 		}
-
-		// just copy over parameters that we want to silently ignore
-		currentDeviceConfig.Broadcast = newDeviceConfig.Broadcast
-		currentDeviceConfig.ExpiresAt = newDeviceConfig.ExpiresAt
 
 		if newDeviceConfig != currentDeviceConfig {
 			// remove secrets before logging
@@ -226,7 +222,7 @@ func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm 
 }
 
 // handleDeviceUpdate handles updates to device configuratiosn
-func handleDeviceUpdate(beat *client.DeviceHeartbeat, credentials client.AgentCredentials, config client.AgentConfig) {
+func handleDeviceUpdate(beat *client.DeviceHeartbeat, credentials client.AgentCredentials, config client.DeviceAgentConfig) {
 	// update current config sooner, so that other goroutines will have the most up-to-date version
 	lastDeviceConfig := currentDeviceConfig
 	currentDeviceConfig = config
@@ -307,7 +303,7 @@ func getSoundDeviceType() string {
 }
 
 // updateALSASettings is used to update the settings for an ALSA sound card
-func updateALSASettings(config client.AgentConfig) {
+func updateALSASettings(config client.DeviceAgentConfig) {
 	switch soundDeviceType {
 	case "snd_rpi_hifiberry_dacplusadc":
 		fallthrough
@@ -325,7 +321,7 @@ func updateALSASettings(config client.AgentConfig) {
 }
 
 // updateALSASettings is used to update the settings for a HiFiBerry sound card
-func updateALSASettingsHiFiBerry(config client.AgentConfig) {
+func updateALSASettingsHiFiBerry(config client.DeviceAgentConfig) {
 	var v int
 	amixerDevice := fmt.Sprintf("hw:%s", soundDeviceName)
 
@@ -384,7 +380,7 @@ func updateALSASettingsHiFiBerry(config client.AgentConfig) {
 }
 
 // updateALSASettingsAudioInjector is used to update the settings for a Audio Injector Stereo sound card
-func updateALSASettingsAudioInjector(config client.AgentConfig) {
+func updateALSASettingsAudioInjector(config client.DeviceAgentConfig) {
 	var v int
 	amixerDevice := fmt.Sprintf("hw:%s", soundDeviceName)
 
@@ -427,7 +423,7 @@ func updateALSASettingsAudioInjector(config client.AgentConfig) {
 }
 
 // updateALSASettingsUSBAudioDevice is used to update the settings for a USB sound card
-func updateALSASettingsUSBAudioDevice(config client.AgentConfig) {
+func updateALSASettingsUSBAudioDevice(config client.DeviceAgentConfig) {
 	var v int
 	amixerDevice := fmt.Sprintf("hw:%s", soundDeviceName)
 
@@ -451,7 +447,7 @@ func updateALSASettingsUSBAudioDevice(config client.AgentConfig) {
 }
 
 // updateALSASettingsUSBPnPSoundDevice is used to update the settings for a USB sound card
-func updateALSASettingsUSBPnPSoundDevice(config client.AgentConfig) {
+func updateALSASettingsUSBPnPSoundDevice(config client.DeviceAgentConfig) {
 	var v int
 	amixerDevice := fmt.Sprintf("hw:%s", soundDeviceName)
 

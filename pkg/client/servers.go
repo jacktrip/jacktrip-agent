@@ -15,6 +15,8 @@
 package client
 
 import (
+	"time"
+
 	"github.com/jmoiron/sqlx/types"
 )
 
@@ -75,11 +77,30 @@ type ServerConfig struct {
 	// true if client's audio should loop back to them
 	LoopBack types.BitBool `json:"loopback" db:"loopback"`
 
+	// true if enabled
+	Enabled types.BitBool `json:"enabled" db:"enabled"`
+}
+
+// ServerAgentConfig defines active configuration for a server
+type ServerAgentConfig struct {
+	DeviceConfig
+	ALSAConfig
+	ServerConfig
+
+	// frames per period
+	Period int `json:"period" db:"period"`
+
+	// size of jitter queue buffer
+	QueueBuffer int `json:"queueBuffer" db:"queue_buffer"`
+
+	// authorization token used by jacktrip-agent to access studio servers
+	AuthToken string `json:"authToken" db:"auth_token"`
+
 	// broadcast visibility of the audio server
 	Broadcast BroadcastVisibility `json:"broadcast" db:"broadcast"`
 
-	// true if enabled
-	Enabled types.BitBool `json:"enabled" db:"enabled"`
+	// timestamp when the server will automatically be paused
+	ExpiresAt time.Time `json:"expiresAt" db:"expires_at"`
 }
 
 // ServerHeartbeat is used to send heartbeat messages from servers / studios
