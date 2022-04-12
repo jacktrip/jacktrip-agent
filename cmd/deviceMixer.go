@@ -40,32 +40,10 @@ type DeviceMixingManager struct {
 	shutdown               chan struct{}
 }
 
-// NewReaper starts and returns a new instance of a cloud instance Reaper
-func NewDeviceMixingManager() *DeviceMixingManager {
-	// reinitialize device lists
-	dmm := &DeviceMixingManager{
-		CurrentCaptureDevices:  map[string]bool{},
-		CurrentPlaybackDevices: map[string]bool{},
-		DeviceStream0Mapping:   map[string][]string{},
-		DeviceCardMapping:      map[string]int{},
-		shutdown:               make(chan struct{}),
-	}
-	return dmm
-}
-
-// Stop is used to halt the mixer manager
-func (dmm *DeviceMixingManager) Stop() {
-	close(dmm.shutdown)
-}
-
 // Run a continuous loop performing device synchronization
 func (dmm *DeviceMixingManager) Run(wg *sync.WaitGroup) {
 	defer wg.Done()
-	// ticker used to process retries
-	//t := time.NewTicker(time.Second)
-	//defer t.Stop()
-
-	// loop until signal or channel is closed
+	// loop channel is closed
 	for {
 		select {
 		case <-time.After(DetectDevicesInterval):

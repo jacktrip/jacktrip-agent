@@ -135,17 +135,23 @@ func runOnDevice(apiOrigin string) {
 	go ac.Run(&wg)
 
 	// Start device mixer
-	dmm := NewDeviceMixingManager()
+	dmm := DeviceMixingManager{
+		CurrentCaptureDevices:  map[string]bool{},
+		CurrentPlaybackDevices: map[string]bool{},
+		DeviceStream0Mapping:   map[string][]string{},
+		DeviceCardMapping:      map[string]int{},
+		shutdown:               make(chan struct{}),
+	}
 	wg.Add(1)
 	go dmm.Run(&wg)
 
 	// start sending heartbeats and updating agent configs
 	wg.Add(1)
-	go sendDeviceHeartbeats(&wg, &beat, &wsm, dmm)
+	go sendDeviceHeartbeats(&wg, &beat, &wsm, &dmm)
 
 	// Start a config handler to update config changes
 	wg.Add(1)
-	go deviceConfigUpdateHandler(&wg, &beat, &wsm, dmm)
+	go deviceConfigUpdateHandler(&wg, &beat, &wsm, &dmm)
 
 	// wait for everything to complete
 	wg.Wait()
