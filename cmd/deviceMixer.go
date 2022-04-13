@@ -99,15 +99,6 @@ func (dmm *DeviceMixingManager) SynchronizeConnections(config client.AgentConfig
 	if ac == nil || ac.JackClient == nil {
 		return
 	}
-	if config.Quality == 2 {
-		if !ac.isValidPort("hubserver:send_1") {
-			return
-		}
-	} else {
-		if !ac.isValidPort(jamulusInputLeft) {
-			return
-		}
-	}
 	dmm.mutex.Lock()
 	defer dmm.mutex.Unlock()
 

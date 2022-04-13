@@ -288,10 +288,12 @@ func (ac *AutoConnector) connect(portID jack.PortId) error {
 	} else {
 		port := ac.JackClient.GetPortById(portID)
 		name := port.GetName()
-		// TODO: Do we need to connect "system:" prefixed ports?
-		match := ac.JTRegexp.MatchString(name)
+		match := ac.JTRegexp.MatchString(name) && !strings.HasPrefix(name, "system:")
 		if match {
 			ac.connectSingleZitaPort(port)
+		}
+		if strings.HasPrefix(name, "Jamulus:") || strings.HasPrefix(name, "hubserver:") {
+			ac.connectAllZitaPorts()
 		}
 	}
 	return nil
