@@ -33,6 +33,11 @@ const (
 	// Prefix tokens used to find hubserver ports
 	hubserverInput  = "hubserver:send_"
 	hubserverOutput = "hubserver:receive_"
+	// Jamulus port names
+	jamulusInputLeft   = "Jamulus:input left"
+	jamulusInputRight  = "Jamulus:input right"
+	jamulusOutputLeft  = "Jamulus:output left"
+	jamulusOutputRight = "Jamulus:output right"
 )
 
 // AutoConnector manages JACK clients and keep tracks of clients
@@ -84,7 +89,31 @@ func (ac *AutoConnector) getServerChannel(clientName string, clientChannel int) 
 
 // getServerPortName finds the desired hubserver port name
 func (ac *AutoConnector) getServerPortName(serverChannel int, isInput bool) string {
-	opt := hubserverOutput
+	var opt string
+
+	// Use jamulus ports if available
+	jil := ac.JackClient.GetPortByName(jamulusInputLeft)
+	jir := ac.JackClient.GetPortByName(jamulusInputRight)
+	jol := ac.JackClient.GetPortByName(jamulusOutputLeft)
+	jor := ac.JackClient.GetPortByName(jamulusOutputRight)
+	if jil != nil && jir != nil && jol != nil && jor != nil {
+		opt = jamulusOutputLeft
+		if serverChannel == 1 {
+			if isInput {
+				opt = jamulusInputLeft
+			}
+		}
+		if serverChannel == 2 {
+			opt = jamulusOutputRight
+			if isInput {
+				opt = jamulusInputRight
+			}
+		}
+		return opt
+	}
+
+	// Use jacktrip "hubserver" ports otherwise
+	opt = hubserverOutput
 	if isInput {
 		opt = hubserverInput
 	}
@@ -126,7 +155,6 @@ func (ac *AutoConnector) isConnected(src, dest string) bool {
 
 // connectPorts establishes a directed connection between two JACK ports
 func (ac *AutoConnector) connectPorts(src, dest string) {
-
 	if ac.isConnected(src, dest) {
 		return
 	}
@@ -135,12 +163,12 @@ func (ac *AutoConnector) connectPorts(src, dest string) {
 	case 0:
 		log.Info("Connected JACK ports", "src", src, "dest", dest)
 	default:
-		log.Error(jack.StrError(code), "Unexpected error connecting JACK ports")
+		log.Error(jack.StrError(code), "Unexpected error connecting JACK ports", "src", src, "dest", dest)
 	}
 }
 
-// connectSingleJackTripZitaPort establishes individual JackTrip<->zita audio connections
-func (ac *AutoConnector) connectSingleJackTripZitaPort(port *jack.Port) {
+// connectSingleZitaPort establishes individual JackTrip/Jamulus<->zita audio connections
+func (ac *AutoConnector) connectSingleZitaPort(port *jack.Port) {
 	suffix := port.GetShortName()
 
 	isInput := true
@@ -176,7 +204,7 @@ func (ac *AutoConnector) connectAllZitaPorts() {
 			if jackPort == nil {
 				log.Error(errors.New("connection failed"), "JACK port no longer exists", "name", port)
 			} else {
-				ac.connectSingleJackTripZitaPort(jackPort)
+				ac.connectSingleZitaPort(jackPort)
 			}
 		}
 	}
@@ -259,9 +287,11 @@ func (ac *AutoConnector) connect(portID jack.PortId) error {
 		ac.connectAllZitaPorts()
 	} else {
 		port := ac.JackClient.GetPortById(portID)
-		match := ac.JTRegexp.MatchString(port.GetName())
+		name := port.GetName()
+		// TODO: Do we need to connect "system:" prefixed ports?
+		match := ac.JTRegexp.MatchString(name)
 		if match {
-			ac.connectSingleJackTripZitaPort(port)
+			ac.connectSingleZitaPort(port)
 		}
 	}
 	return nil
