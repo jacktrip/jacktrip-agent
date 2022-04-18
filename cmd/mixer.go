@@ -237,13 +237,11 @@ func writeConfig(path string, content string) error {
 }
 
 func getCaptureDeviceNames() []string {
-	var names []string
 	out, err := exec.Command("arecord", "-l").Output()
 	if err != nil {
 		log.Error(err, "Unable to retrieve capture device names")
-		return names
+		return nil
 	}
-
 	return extractNames(string(out))
 }
 
@@ -253,7 +251,6 @@ func getPlaybackDeviceNames() []string {
 		log.Error(err, "Unable to retrieve playback device names")
 		return nil
 	}
-
 	return extractNames(string(out))
 }
 
@@ -263,16 +260,14 @@ func getDeviceToNumMappings() map[string]int {
 		log.Error(err, "Unable to retrieve playback device names")
 		return nil
 	}
-
 	return extractCardNum(string(out))
 }
 
 func readCardStream0(cardNum int) []string {
-	var output []string
 	out, err := exec.Command("cat", fmt.Sprintf("/proc/asound/card%d/stream0", cardNum)).Output()
 	if err != nil {
 		log.Error(err, fmt.Sprintf("Unable to retrieve card information for card %d", cardNum))
-		return output
+		return nil
 	}
 	return strings.Split(string(out), "\n")
 }
@@ -293,7 +288,7 @@ func getPlaybackChannelNum(sentences []string, sampleRate int) int {
 				// if we found our target sampleRate, go look for the number of channels
 				if strings.Contains(currSentence, "Rates:") && strings.Contains(currSentence, fmt.Sprintf("%d", sampleRate)) {
 					r, _ := regexp.Compile(`Channels: (\d)`)
-					for ii := j - 1; ii >= max(0, ii-4); ii-- {
+					for ii := j - 1; ii >= max(0, j-5); ii-- {
 						currSentence := sentences[ii]
 						subMatch := r.FindStringSubmatch(currSentence)
 						if len(subMatch) > 1 {
@@ -322,7 +317,7 @@ func getCaptureChannelNum(sentences []string, sampleRate int) int {
 				// if we found our target sampleRate, go look for the number of channels
 				if strings.Contains(currSentence, "Rates:") && strings.Contains(currSentence, fmt.Sprintf("%d", sampleRate)) {
 					r, _ := regexp.Compile(`Channels: (\d)`)
-					for ii := j - 1; ii >= max(0, ii-4); ii-- {
+					for ii := j - 1; ii >= max(0, j-5); ii-- {
 						currSentence := sentences[ii]
 						subMatch := r.FindStringSubmatch(currSentence)
 						if len(subMatch) > 1 {
@@ -366,20 +361,4 @@ func extractCardNum(target string) map[string]int {
 		}
 	}
 	return nameToNum
-}
-
-func contains(lst []string, target string) bool {
-	for _, item := range lst {
-		if target == item {
-			return true
-		}
-	}
-	return false
-}
-
-func max(a, b int) int {
-	if a < b {
-		return b
-	}
-	return a
 }
