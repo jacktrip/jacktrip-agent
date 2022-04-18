@@ -36,6 +36,9 @@ type DeviceConfig struct {
 	// If true, a compressor will be applied to device output
 	Compressor types.BitBool `json:"compressor" db:"compressor"`
 
+	// If true, multiple USB audio interfaces will be automatically detected and patched accordingly
+	EnableUSB types.BitBool `json:"enableUsb" db:"enable_usb"`
+
 	// connection quality
 	// 0: low quality Jamulus (low)
 	// 1: high quality Jamulus (medium)
