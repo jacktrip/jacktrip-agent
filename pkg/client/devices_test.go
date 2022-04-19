@@ -28,14 +28,25 @@ func TestDeviceConfig(t *testing.T) {
 	var target DeviceConfig
 
 	// Parse JSON into DeviceConfig struct
-	raw = `{"devicePort": 8000, "reverb": 42, "limiter": true, "compressor": 0, "quality": 2}`
+	raw = `{"devicePort": 8000, "reverb": 42, "limiter": true, "compressor": false, "quality": 2}`
 	target = DeviceConfig{}
 	json.Unmarshal([]byte(raw), &target)
 	assert.Equal(8000, target.DevicePort)
 	assert.Equal(42, target.Reverb)
+	assert.Equal(false, bool(target.EnableUSB))
 	assert.Equal(true, bool(target.Limiter))
 	assert.Equal(false, bool(target.Compressor))
 	assert.Equal(2, target.Quality)
+
+	raw = `{"devicePort": 8001, "reverb": 99, "limiter": false, "compressor": true, "enableUsb": true, "quality": 1}`
+	target = DeviceConfig{}
+	json.Unmarshal([]byte(raw), &target)
+	assert.Equal(8001, target.DevicePort)
+	assert.Equal(99, target.Reverb)
+	assert.Equal(true, bool(target.EnableUSB))
+	assert.Equal(false, bool(target.Limiter))
+	assert.Equal(true, bool(target.Compressor))
+	assert.Equal(1, target.Quality)
 }
 
 func TestALSAConfig(t *testing.T) {
@@ -84,6 +95,7 @@ func TestAgentConfig(t *testing.T) {
 	assert.Equal(128, target.QueueBuffer)
 	assert.Equal(8000, target.DevicePort)
 	assert.Equal(42, target.Reverb)
+	assert.Equal(false, bool(target.EnableUSB))
 	assert.Equal(true, bool(target.Limiter))
 	assert.Equal(false, bool(target.Compressor))
 	assert.Equal(2, target.Quality)
