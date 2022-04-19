@@ -89,8 +89,10 @@ func (dmm *DeviceMixingManager) Reset() {
 // TODO: We should probably have error handling here
 // SynchronizeConnections synchronizes all Zita <-> Jack port connections
 func (dmm *DeviceMixingManager) SynchronizeConnections(config client.AgentConfig) {
-	// do nothing when the device is not connect to server
-	if !config.Enabled || config.Host == "" {
+	// Reset should be called under the following conditions:
+	// - multi-USB mode is disabled and the detected soundcard is not dummy (indicative of analog bridge)
+	// - or device is not connected to server
+	if (!config.EnableUSB && soundDeviceName != "dummy") || !config.Enabled || config.Host == "" {
 		dmm.Reset()
 		return
 	}
