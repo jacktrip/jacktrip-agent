@@ -27,7 +27,7 @@ const (
 	// ZitaConfigTemplate is a set of parameters for zita systemd
 	ZitaConfigTemplate = "ZITA_OPTS=-d hw:%s -c %d -r %d -j %s\n"
 	// ZitaServiceNameTemplate uses a wildcard systemd conf file
-	ZitaServiceNameTemplate = "zita-%s-@%s.service"
+	ZitaServiceNameTemplate = "zita-%s@%s.service"
 	// DetectDevicesInterval is the time to sleep between detecting new devices, in seconds
 	DetectDevicesInterval = time.Second
 )
