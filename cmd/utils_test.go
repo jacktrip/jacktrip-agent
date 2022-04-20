@@ -20,22 +20,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestContains(t *testing.T) {
-	assert := assert.New(t)
-	members := []string{"john", "paul", "george", "ringo"}
-	name := "john"
-
-	assert.True(contains(members, name))
-	name = "paul"
-	assert.True(contains(members, name))
-	name = "george"
-	assert.True(contains(members, name))
-	name = "ringo"
-	assert.True(contains(members, name))
-	name = "jorge"
-	assert.False(contains(members, name))
-}
-
 func TestMax(t *testing.T) {
 	assert := assert.New(t)
 

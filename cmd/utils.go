@@ -57,16 +57,6 @@ func RetryWithBackoff(run func() error) error {
 	return nil
 }
 
-// contains returns true if the given string is in the given slice
-func contains(lst []string, target string) bool {
-	for _, item := range lst {
-		if target == item {
-			return true
-		}
-	}
-	return false
-}
-
 // max returns the maximum of two integers
 func max(a, b int) int {
 	if a < b {

@@ -263,10 +263,10 @@ func handleDeviceUpdate(beat *client.DeviceHeartbeat, credentials client.AgentCr
 
 		// shutdown or restart managed services
 		ac.TeardownClient()
+		dmm.Reset()
 		restartAllServices(config)
 		if config.Enabled && config.Host != "" && config.Type != "" {
 			ac.SetupClient()
-			dmm.Reset()
 		}
 	}
 
