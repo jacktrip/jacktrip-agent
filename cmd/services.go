@@ -202,6 +202,7 @@ func StopZitaService(serviceName string) error {
 	conn, err := dbus.New()
 	if err != nil {
 		log.Error(err, "Failed to connect to dbus")
+		return err
 	}
 	defer conn.Close()
 
@@ -209,15 +210,17 @@ func StopZitaService(serviceName string) error {
 	units, err := conn.ListUnitsByNames([]string{serviceName})
 	if err != nil {
 		log.Error(err, "Failed to get status of managed services")
+		return err
 	}
 
 	for _, u := range units {
 		err = stopService(conn, u)
 		if err != nil {
 			log.Error(err, "Unable to stop service")
+			return err
 		}
 	}
-	return err
+	return nil
 }
 
 // restartAllServices is used to restart all of the managed systemd services
@@ -316,4 +319,16 @@ func startService(conn *dbus.Conn, name string) error {
 	}
 	log.Info("Finished starting managed service", "name", name)
 	return nil
+}
+
+// killService is used to kill a managed systemd service
+func killService(name string) {
+	conn, err := dbus.New()
+	if err != nil {
+		log.Error(err, "Failed to connect to dbus")
+		return
+	}
+	defer conn.Close()
+	log.Info("Killing managed service", "name", name)
+	conn.KillUnit(name, 9)
 }
