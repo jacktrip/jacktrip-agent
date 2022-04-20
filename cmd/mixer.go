@@ -25,7 +25,7 @@ const (
 	// PathToZitaConfig is a systemd conf file path for zita
 	PathToZitaConfig = "/tmp/default/zita-%s-conf"
 	// ZitaConfigTemplate is a set of parameters for zita systemd
-	ZitaConfigTemplate = "ZITA_OPTS=-d hw:%s -c %d -r %d -j %s\n"
+	ZitaConfigTemplate = "ZITA_OPTS=-d hw:%s -c %d -p %d -r %d -j %s\n"
 	// ZitaServiceNameTemplate uses a wildcard systemd conf file
 	ZitaServiceNameTemplate = "zita-%s@%s.service"
 	// DetectDevicesInterval is the time to sleep between detecting new devices, in seconds
@@ -155,7 +155,7 @@ func (dmm *DeviceMixingManager) connectZita(mode ZitaMode, device string, config
 	}
 
 	// write a systemd config file for Zita Bridge parameters
-	if err := writeZitaConfig(channelNum, config.SampleRate, mode, device); err != nil {
+	if err := writeZitaConfig(channelNum, config.Period, config.SampleRate, mode, device); err != nil {
 		log.Error(err, err.Error())
 		return err
 	}
@@ -222,13 +222,13 @@ func removeInactiveDevices(foundDevices, activeDevices map[string]bool, mode Zit
 	}
 }
 
-func writeZitaConfig(numChannel int, rate int, mode ZitaMode, device string) error {
+func writeZitaConfig(numChannel int, period int, rate int, mode ZitaMode, device string) error {
 	// format a path with a device and mode specific name
 	connectionName := fmt.Sprintf("%s-%s", mode, device)
 	path := fmt.Sprintf(PathToZitaConfig, connectionName)
 
 	// format a config template
-	zitaConfig := fmt.Sprintf(ZitaConfigTemplate, device, numChannel, rate, connectionName)
+	zitaConfig := fmt.Sprintf(ZitaConfigTemplate, device, numChannel, period, rate, connectionName)
 	return writeConfig(path, zitaConfig)
 }
 
