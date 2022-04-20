@@ -196,6 +196,27 @@ Capture:
 	assert.Equal(1, result)
 	result = getCaptureChannelNum(strings.Split(content, "\n"), 96000)
 	assert.Equal(-1, result)
+
+	content = `
+FMIC Fender Mustang Micro at usb-0000:01:00.0-1.1, full speed : USB Audio
+
+Capture:
+	Status: Stop
+	Interface 1
+	Altset 1
+	Format: S16_LE
+	Channels: 2
+	Endpoint: 1 IN (ASYNC)
+	Rates: 44100
+	Bits: 16
+	Channel map: FL FR
+`
+	result = getCaptureChannelNum(strings.Split(content, "\n"), 48000)
+	assert.Equal(-1, result)
+	result = getCaptureChannelNum(strings.Split(content, "\n"), 44100)
+	assert.Equal(2, result)
+	result = getCaptureChannelNum(strings.Split(content, "\n"), 96000)
+	assert.Equal(-1, result)
 }
 
 func TestWriteConfig(t *testing.T) {
