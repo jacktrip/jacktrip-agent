@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -330,170 +331,56 @@ func getSoundDeviceType() string {
 
 // updateALSASettings is used to update the settings for an ALSA sound card
 func updateALSASettings(config client.AgentConfig) {
-	switch soundDeviceType {
-	case "snd_rpi_hifiberry_dacplusadc":
-		fallthrough
-	case "snd_rpi_hifiberry_dacplusadcpro":
-		updateALSASettingsHiFiBerry(config)
-	case "audioinjector-pi-soundcard":
-		updateALSASettingsAudioInjector(config)
-	case "USB Audio Device":
-		updateALSASettingsUSBAudioDevice(config)
-	case "USB PnP Sound Device":
-		updateALSASettingsUSBPnPSoundDevice(config)
-	default:
-		log.Info("No ALSA alsa controls for sound device", "type", soundDeviceType)
-	}
-}
-
-// updateALSASettings is used to update the settings for a HiFiBerry sound card
-func updateALSASettingsHiFiBerry(config client.AgentConfig) {
-	var v int
-	amixerDevice := fmt.Sprintf("hw:%s", soundDeviceName)
-
-	// ignore capture boost
-	/*
-		if config.CaptureBoost {
-			v = 104
-		} else {
-			v = 0
+	deviceCardMap := getDeviceToNumMappings()
+	for device, card := range deviceCardMap {
+		controls := getALSAControls(card)
+		for control, _ := range controls {
+			if strings.HasSuffix(control, "Playback Volume") {
+				setALSAControl(control, card, config.PlaybackVolume)
+			} else if strings.HasSuffix(control, "Capture Volume") {
+				setALSAControl(control, card, config.CaptureVolume)
+			}
 		}
-		cmd := exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='PGA Gain Left'", "--", fmt.Sprintf("%d", v))
-		if err := cmd.Run(); err != nil {
-			log.Error(err, "Unable to update 'PGA Gain Left'", "value", v)
-		} else {
-			log.Info("Updated 'PGA Gain Left'", "value", v)
+		// For HiFiBerry cards, always enable this "Analogue Playback Volume" option
+		if strings.HasPrefix(device, "snd_rpi_hifiberry_dacplusadc") {
+			setALSAControl("Analogue Playback Volume", card, 100)
 		}
-		cmd = exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='PGA Gain Right'", "--", fmt.Sprintf("%d", v))
-		if err := cmd.Run(); err != nil {
-			log.Error(err, "Unable to update 'PGA Gain Right'", "value", v)
-		} else {
-			log.Info("Updated 'PGA Gain Right'", "value", v)
+	}
+}
+
+// setALSAControl sets the value of an ALSA control
+func setALSAControl(control string, card, value int) {
+	percentage := fmt.Sprintf("%d%%", value)
+	cmd := exec.Command("/usr/bin/amixer", "-c", fmt.Sprintf("%d", card), "cset", fmt.Sprintf("name='%s'", control), "--", percentage)
+	_, err := cmd.Output()
+	if err != nil {
+		log.Error(err, "Unable to set ALSA control", "card", card, "control", control)
+	}
+	log.Info("Updated ALSA control", "card", card, "control", control, "value", percentage)
+}
+
+// getALSAControls returns a map of available capture/playback volume controls for a specific card
+func getALSAControls(card int) map[string]bool {
+	out, err := exec.Command("/usr/bin/amixer", "-c", fmt.Sprintf("%d", card), "controls").Output()
+	if err != nil {
+		log.Error(err, "Unable to get ALSA controls", "card", card)
+		return nil
+	}
+	return parseALSAControls(string(out))
+}
+
+// parseALSAControls parses all relevant volume controls of an ALSA card from `amixer controls`
+func parseALSAControls(output string) map[string]bool {
+	controls := map[string]bool{}
+	lines := strings.Split(output, "\n")
+	r := regexp.MustCompile(`numid=(\d+),iface=(\w+),name='(.*\s(Playback|Capture) Volume)'`)
+	for _, line := range lines {
+		matches := r.FindAllStringSubmatch(line, -1)
+		if len(matches) == 1 {
+			controls[matches[0][3]] = true
 		}
-	*/
-
-	// set capture volume
-	// note: 'PGA Gain Left' and 'PGA Gain Right' appear to map directly to 'ADC Capture Volume' left & right
-	v = int(config.CaptureVolume * 104 / 100)
-	cmd := exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='ADC Capture Volume'", "--", fmt.Sprintf("%d,%d", v, v))
-	if err := cmd.Run(); err != nil {
-		log.Error(err, "Unable to update 'ADC Capture Volume'", "value", v)
-	} else {
-		log.Info("Updated 'ADC Capture Volume'", "value", v)
 	}
-
-	// set playback boost
-	if config.PlaybackBoost {
-		v = 1
-	} else {
-		v = 0
-	}
-	cmd = exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Analogue Playback Volume'", "--", fmt.Sprintf("%d,%d", v, v))
-	if err := cmd.Run(); err != nil {
-		log.Error(err, "Unable to update 'Analogue Playback Volume'", "value", v)
-	} else {
-		log.Info("Updated 'Analogue Playback Volume'", "value", v)
-	}
-
-	// set playback volume
-	v = int(config.PlaybackVolume * 207 / 100)
-	cmd = exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Digital Playback Volume'", "--", fmt.Sprintf("%d,%d", v, v))
-	if err := cmd.Run(); err != nil {
-		log.Error(err, "Unable to update 'Digital Playback Volume' to %d: %s", "value", v)
-	} else {
-		log.Info("Updated 'Digital Playback Volume'", "value", v)
-	}
-}
-
-// updateALSASettingsAudioInjector is used to update the settings for a Audio Injector Stereo sound card
-func updateALSASettingsAudioInjector(config client.AgentConfig) {
-	var v int
-	amixerDevice := fmt.Sprintf("hw:%s", soundDeviceName)
-
-	// enable built in mic with boost, if set
-	if config.CaptureBoost {
-		v = 1
-	} else {
-		v = 0
-	}
-	cmd := exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Mic Boost Volume'", "--", fmt.Sprintf("%d", v))
-	if err := cmd.Run(); err != nil {
-		log.Error(err, "Unable to update 'Mic Boost Volume'", "value", v)
-	} else {
-		log.Info("Updated 'Mic Boost Volume'", "value", v)
-	}
-	cmd = exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Input Mux'", "--", fmt.Sprintf("%d", v))
-	if err := cmd.Run(); err != nil {
-		log.Error(err, "Unable to update 'Input Mux'", "value", v)
-	} else {
-		log.Info("Updated 'Input Mux'", "value", v)
-	}
-
-	// set capture volume
-	v = int(config.CaptureVolume * 31 / 100)
-	cmd = exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Capture Volume'", "--", fmt.Sprintf("%d", v))
-	if err := cmd.Run(); err != nil {
-		log.Error(err, "Unable to update 'Capture Volume'", "value", v)
-	} else {
-		log.Info("Updated 'Capture Volume'", "value", v)
-	}
-
-	// set playback volume
-	v = int(config.PlaybackVolume * 127 / 100)
-	cmd = exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Master Playback Volume'", "--", fmt.Sprintf("%d,%d", v, v))
-	if err := cmd.Run(); err != nil {
-		log.Error(err, "Unable to update 'Master Playback Volume' to %d: %s", "value", v)
-	} else {
-		log.Info("Updated 'Master Playback Volume'", "value", v)
-	}
-}
-
-// updateALSASettingsUSBAudioDevice is used to update the settings for a USB sound card
-func updateALSASettingsUSBAudioDevice(config client.AgentConfig) {
-	var v int
-	amixerDevice := fmt.Sprintf("hw:%s", soundDeviceName)
-
-	// set capture volume
-	v = int(config.CaptureVolume * 35 / 100)
-	cmd := exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Mic Capture Volume'", "--", fmt.Sprintf("%d", v))
-	if err := cmd.Run(); err != nil {
-		log.Error(err, "Unable to update 'Mic Capture Volume'", "value", v)
-	} else {
-		log.Info("Updated 'Mic Capture Volume'", "value", v)
-	}
-
-	// set playback volume
-	v = int(config.PlaybackVolume * 37 / 100)
-	cmd = exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Speaker Playback Volume'", "--", fmt.Sprintf("%d,%d", v, v))
-	if err := cmd.Run(); err != nil {
-		log.Error(err, "Unable to update 'Speaker Playback Volume' to %d: %s", "value", v)
-	} else {
-		log.Info("Updated 'Speaker Playback Volume'", "value", v)
-	}
-}
-
-// updateALSASettingsUSBPnPSoundDevice is used to update the settings for a USB sound card
-func updateALSASettingsUSBPnPSoundDevice(config client.AgentConfig) {
-	var v int
-	amixerDevice := fmt.Sprintf("hw:%s", soundDeviceName)
-
-	// set capture volume
-	v = int(config.CaptureVolume * 16 / 100)
-	cmd := exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Mic Capture Volume'", "--", fmt.Sprintf("%d", v))
-	if err := cmd.Run(); err != nil {
-		log.Error(err, "Unable to update 'Mic Capture Volume'", "value", v)
-	} else {
-		log.Info("Updated 'Mic Capture Volume'", "value", v)
-	}
-
-	// set playback volume
-	v = int(config.PlaybackVolume * 151 / 100)
-	cmd = exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Speaker Playback Volume'", "--", fmt.Sprintf("%d,%d", v, v))
-	if err := cmd.Run(); err != nil {
-		log.Error(err, "Unable to update 'Speaker Playback Volume' to %d: %s", "value", v)
-	} else {
-		log.Info("Updated 'Speaker Playback Volume'", "value", v)
-	}
+	return controls
 }
 
 // updateAvahiServiceConfig generates a new /etc/avahi/services/jacktrip-agent.service file

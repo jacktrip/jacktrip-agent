@@ -308,14 +308,9 @@ func getPlaybackChannelNum(sentences []string, desiredSampleRate int) int {
 
 				// if we found our target sampleRate, go look for the number of channels
 				if strings.Contains(currSentence, "Rates:") {
-					// parse the interface's sample rate(s)
-					r := regexp.MustCompile(`Rates: (\d+)(?:,\s(\d+))?`)
-					rates := r.FindStringSubmatch(currSentence)
-					if len(rates) <= 1 {
-						continue
-					}
+					sampleRates := parseSampleRates(currSentence)
 					// parse the interface's channels
-					r = regexp.MustCompile(`Channels: (\d)`)
+					r := regexp.MustCompile(`Channels: (\d)`)
 					for ii := j - 1; ii >= max(0, j-5); ii-- {
 						currSentence := sentences[ii]
 						subMatch := r.FindStringSubmatch(currSentence)
@@ -324,15 +319,8 @@ func getPlaybackChannelNum(sentences []string, desiredSampleRate int) int {
 							if err != nil {
 								continue
 							}
-							for i, rate := range rates {
-								var currSampleRate int
-								if i > 0 {
-									currSampleRate, err = strconv.Atoi(rate)
-									if err != nil {
-										continue
-									}
-									channels[currSampleRate] = n
-								}
+							for _, rate := range sampleRates {
+								channels[rate] = n
 							}
 						}
 					}
@@ -354,14 +342,9 @@ func getCaptureChannelNum(sentences []string, desiredSampleRate int) int {
 
 				// if we found our target sampleRate, go look for the number of channels
 				if strings.Contains(currSentence, "Rates:") {
-					// parse the interface's sample rate(s)
-					r := regexp.MustCompile(`Rates: (\d+)(?:,\s(\d+))?`)
-					rates := r.FindStringSubmatch(currSentence)
-					if len(rates) <= 1 {
-						continue
-					}
+					sampleRates := parseSampleRates(currSentence)
 					// parse the interface's channels
-					r = regexp.MustCompile(`Channels: (\d)`)
+					r := regexp.MustCompile(`Channels: (\d)`)
 					for ii := j - 1; ii >= max(0, j-5); ii-- {
 						currSentence := sentences[ii]
 						subMatch := r.FindStringSubmatch(currSentence)
@@ -370,15 +353,8 @@ func getCaptureChannelNum(sentences []string, desiredSampleRate int) int {
 							if err != nil {
 								continue
 							}
-							for i, rate := range rates {
-								var currSampleRate int
-								if i > 0 {
-									currSampleRate, err = strconv.Atoi(rate)
-									if err != nil {
-										continue
-									}
-									channels[currSampleRate] = n
-								}
+							for _, rate := range sampleRates {
+								channels[rate] = n
 							}
 						}
 					}
@@ -416,4 +392,22 @@ func extractCardNum(target string) map[string]int {
 		}
 	}
 	return nameToNum
+}
+
+// parseSampleRates parses the sample rate(s) line of an ALSA card from `/proc/asound/card%d/stream0`
+func parseSampleRates(line string) []int {
+	sampleRates := []int{}
+	r := regexp.MustCompile(`Rates: (\d+)(?:,\s(\d+))?`)
+	rates := r.FindStringSubmatch(line)
+	if len(rates) <= 1 {
+		return sampleRates
+	}
+	for _, rate := range rates[1:] {
+		currSampleRate, err := strconv.Atoi(rate)
+		if err != nil {
+			continue
+		}
+		sampleRates = append(sampleRates, currSampleRate)
+	}
+	return sampleRates
 }

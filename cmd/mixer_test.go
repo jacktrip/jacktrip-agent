@@ -475,3 +475,37 @@ Capture:
 	result = getCaptureChannelNum(strings.Split(content, "\n"), 96000)
 	assert.Equal(2, result)
 }
+
+func TestParseSampleRates(t *testing.T) {
+	assert := assert.New(t)
+
+	line := "Rates: 44100"
+	result := parseSampleRates(line)
+	assert.Equal(1, len(result))
+	assert.Contains(result, 44100)
+
+	line = "Rates: 48000, 44100"
+	result = parseSampleRates(line)
+	assert.Equal(2, len(result))
+	assert.Contains(result, 48000)
+	assert.Contains(result, 44100)
+
+	line = "Rates: 192000, 96000"
+	result = parseSampleRates(line)
+	assert.Equal(2, len(result))
+	assert.Contains(result, 192000)
+	assert.Contains(result, 96000)
+
+	line = "Rates: 192000"
+	result = parseSampleRates(line)
+	assert.Equal(1, len(result))
+	assert.Contains(result, 192000)
+
+	line = "Rates: "
+	result = parseSampleRates(line)
+	assert.Equal(0, len(result))
+
+	line = "Rates: blahblah"
+	result = parseSampleRates(line)
+	assert.Equal(0, len(result))
+}
