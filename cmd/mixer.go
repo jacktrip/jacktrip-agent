@@ -132,6 +132,11 @@ func (dmm *DeviceMixingManager) SynchronizeConnections(config client.AgentConfig
 
 	// 7. Synchronize new playback devices
 	dmm.addActiveDevices(config, newPlaybackDevices, ZitaPlayback)
+
+	// 8. Update ALSA settings
+	if len(newCaptureDevices) > 0 || len(newPlaybackDevices) > 0 {
+		updateALSASettings(config)
+	}
 }
 
 func (dmm *DeviceMixingManager) connectZita(mode ZitaMode, device string, config client.AgentConfig) error {
@@ -142,20 +147,15 @@ func (dmm *DeviceMixingManager) connectZita(mode ZitaMode, device string, config
 		return nil
 	}
 
-	channelNum := -1
-	if mode == ZitaCapture {
-		channelNum = getCaptureChannelNum(stream0, config.SampleRate)
-	} else {
-		channelNum = getPlaybackChannelNum(stream0, config.SampleRate)
-	}
-
-	if channelNum == -1 {
-		log.Info(fmt.Sprintf("Channel num was not found for %s. Connection cannot not be established.", device))
+	sampleRateToChannels := getSampleRateToChannelMap(stream0, mode)
+	targetSampleRate, channelCount := findBestSampleRateAndChannel(sampleRateToChannels, config.SampleRate)
+	if channelCount == -1 {
+		log.Info(fmt.Sprintf("Channel count was not found for %s. Connection cannot not be established.", device))
 		return nil
 	}
 
 	// write a systemd config file for Zita Bridge parameters
-	if err := writeZitaConfig(channelNum, config.Period, config.SampleRate, mode, device); err != nil {
+	if err := writeZitaConfig(channelCount, config.Period, targetSampleRate, mode, device); err != nil {
 		log.Error(err, err.Error())
 		return err
 	}
@@ -203,7 +203,7 @@ func (dmm *DeviceMixingManager) addActiveDevices(config client.AgentConfig, newD
 // findNewDevices returns a list of new devices that are not in the current list
 func findNewDevices(foundDevices, activeDevices map[string]bool) []string {
 	var newDevices []string
-	for device, _ := range activeDevices {
+	for device := range activeDevices {
 		if _, ok := foundDevices[device]; !ok {
 			newDevices = append(newDevices, device)
 		}
@@ -276,46 +276,48 @@ func readCardStream0(cardNum int) []string {
 	return strings.Split(string(out), "\n")
 }
 
-func findBestChannelNumber(rateToChannelsMap map[int]int, desiredSampleRate int) int {
+// findBestSampleRateAndChannel returns the best sample rate & channel count based on a desired target
+func findBestSampleRateAndChannel(rateToChannelsMap map[int]int, desiredSampleRate int) (int, int) {
 	if len(rateToChannelsMap) == 0 {
-		return -1
+		return 0, -1
 	}
 	if bestChannel, ok := rateToChannelsMap[desiredSampleRate]; ok {
-		return bestChannel
+		return desiredSampleRate, bestChannel
 	}
 	// If the desired sample rate is not available, fallback to either 48k or 44.1k
 	if bestChannel, ok := rateToChannelsMap[48000]; ok {
-		return bestChannel
+		return 48000, bestChannel
 	}
 	if bestChannel, ok := rateToChannelsMap[44100]; ok {
-		return bestChannel
+		return 44100, bestChannel
 	}
-	return -1
+	return 0, -1
 }
 
-func getPlaybackChannelNum(sentences []string, desiredSampleRate int) int {
-	channels := map[int]int{}
+// getSampleRateToChannelMap returns a map of sample-rates-to-channel-counts for an ALSA card from `/proc/asound/card%d/stream0`
+func getSampleRateToChannelMap(sentences []string, mode ZitaMode) map[int]int {
+	output := map[int]int{}
+	// When scanning through the output, we begin parsing each line beginning at `startSequence` and ending at `stopSequence`
+	startSequence := "Playback:"
+	stopSequence := "Capture:"
+	if mode == ZitaCapture {
+		startSequence = "Capture:"
+		stopSequence = "Playback:"
+	}
 	for i, sentence := range sentences {
-		// look for the playback section
-		if strings.Contains(sentence, "Playback:") {
+		// when we find the `startSequence` section, scan each subsequent line for any meaningful bits of data
+		if strings.Contains(sentence, startSequence) {
 			for j := i + 1; j < len(sentences); j++ {
 				currSentence := sentences[j]
-
-				// stop if we see "Capture" which means we haven't found the right channel
-				if strings.Contains(currSentence, "Capture:") {
-					return findBestChannelNumber(channels, desiredSampleRate)
+				// break when we see the `startSequence` because that indicates the end of the section
+				if strings.Contains(currSentence, stopSequence) {
+					return output
 				}
-
-				// if we found our target sampleRate, go look for the number of channels
+				// if we found our target sampleRate, look for the number of channels
 				if strings.Contains(currSentence, "Rates:") {
-					// parse the interface's sample rate(s)
-					r := regexp.MustCompile(`Rates: (\d+)(?:,\s(\d+))?`)
-					rates := r.FindStringSubmatch(currSentence)
-					if len(rates) <= 1 {
-						continue
-					}
+					sampleRates := parseSampleRates(currSentence)
 					// parse the interface's channels
-					r = regexp.MustCompile(`Channels: (\d)`)
+					r := regexp.MustCompile(`Channels: (\d)`)
 					for ii := j - 1; ii >= max(0, j-5); ii-- {
 						currSentence := sentences[ii]
 						subMatch := r.FindStringSubmatch(currSentence)
@@ -324,15 +326,8 @@ func getPlaybackChannelNum(sentences []string, desiredSampleRate int) int {
 							if err != nil {
 								continue
 							}
-							for i, rate := range rates {
-								var currSampleRate int
-								if i > 0 {
-									currSampleRate, err = strconv.Atoi(rate)
-									if err != nil {
-										continue
-									}
-									channels[currSampleRate] = n
-								}
+							for _, rate := range sampleRates {
+								output[rate] = n
 							}
 						}
 					}
@@ -341,52 +336,7 @@ func getPlaybackChannelNum(sentences []string, desiredSampleRate int) int {
 			}
 		}
 	}
-	return findBestChannelNumber(channels, desiredSampleRate)
-}
-
-func getCaptureChannelNum(sentences []string, desiredSampleRate int) int {
-	channels := map[int]int{}
-	for i, sentence := range sentences {
-		// look for the capture section
-		if strings.Contains(sentence, "Capture:") {
-			for j := i + 1; j < len(sentences); j++ {
-				currSentence := sentences[j]
-
-				// if we found our target sampleRate, go look for the number of channels
-				if strings.Contains(currSentence, "Rates:") {
-					// parse the interface's sample rate(s)
-					r := regexp.MustCompile(`Rates: (\d+)(?:,\s(\d+))?`)
-					rates := r.FindStringSubmatch(currSentence)
-					if len(rates) <= 1 {
-						continue
-					}
-					// parse the interface's channels
-					r = regexp.MustCompile(`Channels: (\d)`)
-					for ii := j - 1; ii >= max(0, j-5); ii-- {
-						currSentence := sentences[ii]
-						subMatch := r.FindStringSubmatch(currSentence)
-						if len(subMatch) > 1 {
-							n, err := strconv.Atoi(subMatch[1])
-							if err != nil {
-								continue
-							}
-							for i, rate := range rates {
-								var currSampleRate int
-								if i > 0 {
-									currSampleRate, err = strconv.Atoi(rate)
-									if err != nil {
-										continue
-									}
-									channels[currSampleRate] = n
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-	return findBestChannelNumber(channels, desiredSampleRate)
+	return output
 }
 
 func extractNames(target string) map[string]bool {
@@ -416,4 +366,22 @@ func extractCardNum(target string) map[string]int {
 		}
 	}
 	return nameToNum
+}
+
+// parseSampleRates parses the sample rate(s) line of an ALSA card from `/proc/asound/card%d/stream0`
+func parseSampleRates(line string) []int {
+	sampleRates := []int{}
+	r := regexp.MustCompile(`Rates: (\d+)(?:,\s(\d+))?`)
+	rates := r.FindStringSubmatch(line)
+	if len(rates) <= 1 {
+		return sampleRates
+	}
+	for _, rate := range rates[1:] {
+		currSampleRate, err := strconv.Atoi(rate)
+		if err != nil {
+			continue
+		}
+		sampleRates = append(sampleRates, currSampleRate)
+	}
+	return sampleRates
 }

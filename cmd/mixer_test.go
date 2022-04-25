@@ -150,6 +150,271 @@ Maecenas a urna condimentum erat euismod venenatis.
 	assert.Equal(content, string(data))
 }
 
+func TestFindBestSampleRateAndChannel(t *testing.T) {
+	assert := assert.New(t)
+
+	// Case for empty map
+	rateToChannelsMap := map[int]int{}
+	rate, channels := findBestSampleRateAndChannel(rateToChannelsMap, 44100)
+	assert.Equal(0, rate)
+	assert.Equal(-1, channels)
+	rate, channels = findBestSampleRateAndChannel(rateToChannelsMap, 48000)
+	assert.Equal(0, rate)
+	assert.Equal(-1, channels)
+	rate, channels = findBestSampleRateAndChannel(rateToChannelsMap, 96000)
+	assert.Equal(0, rate)
+	assert.Equal(-1, channels)
+
+	// Case for only 48000::1 in map
+	rateToChannelsMap = map[int]int{48000: 1}
+	rate, channels = findBestSampleRateAndChannel(rateToChannelsMap, 44100)
+	assert.Equal(48000, rate)
+	assert.Equal(1, channels)
+	rate, channels = findBestSampleRateAndChannel(rateToChannelsMap, 48000)
+	assert.Equal(48000, rate)
+	assert.Equal(1, channels)
+	rate, channels = findBestSampleRateAndChannel(rateToChannelsMap, 96000)
+	assert.Equal(48000, rate)
+	assert.Equal(1, channels)
+
+	// Case for only 48000::2 in map
+	rateToChannelsMap = map[int]int{48000: 2}
+	rate, channels = findBestSampleRateAndChannel(rateToChannelsMap, 44100)
+	assert.Equal(48000, rate)
+	assert.Equal(2, channels)
+	rate, channels = findBestSampleRateAndChannel(rateToChannelsMap, 48000)
+	assert.Equal(48000, rate)
+	assert.Equal(2, channels)
+	rate, channels = findBestSampleRateAndChannel(rateToChannelsMap, 96000)
+	assert.Equal(48000, rate)
+	assert.Equal(2, channels)
+
+	// Case for only 44100::3 in map
+	rateToChannelsMap = map[int]int{44100: 3}
+	rate, channels = findBestSampleRateAndChannel(rateToChannelsMap, 44100)
+	assert.Equal(44100, rate)
+	assert.Equal(3, channels)
+	rate, channels = findBestSampleRateAndChannel(rateToChannelsMap, 48000)
+	assert.Equal(44100, rate)
+	assert.Equal(3, channels)
+	rate, channels = findBestSampleRateAndChannel(rateToChannelsMap, 96000)
+	assert.Equal(44100, rate)
+	assert.Equal(3, channels)
+
+	// Case for both 48000 and 44100 in map
+	rateToChannelsMap = map[int]int{48000: 1, 44100: 3}
+	rate, channels = findBestSampleRateAndChannel(rateToChannelsMap, 44100)
+	assert.Equal(44100, rate)
+	assert.Equal(3, channels)
+	rate, channels = findBestSampleRateAndChannel(rateToChannelsMap, 48000)
+	assert.Equal(48000, rate)
+	assert.Equal(1, channels)
+	rate, channels = findBestSampleRateAndChannel(rateToChannelsMap, 96000)
+	assert.Equal(48000, rate)
+	assert.Equal(1, channels)
+
+	// Case for multiple items in map
+	rateToChannelsMap = map[int]int{44100: 5, 48000: 2, 96000: 1}
+	rate, channels = findBestSampleRateAndChannel(rateToChannelsMap, 44100)
+	assert.Equal(44100, rate)
+	assert.Equal(5, channels)
+	rate, channels = findBestSampleRateAndChannel(rateToChannelsMap, 48000)
+	assert.Equal(48000, rate)
+	assert.Equal(2, channels)
+	rate, channels = findBestSampleRateAndChannel(rateToChannelsMap, 96000)
+	assert.Equal(96000, rate)
+	assert.Equal(1, channels)
+}
+
+func TestGetSampleRateToChannelMap(t *testing.T) {
+	assert := assert.New(t)
+	var zMode ZitaMode
+	var content string
+
+	// Tests for mode == ZitaPlayback
+	zMode = ZitaPlayback
+
+	content = `
+Generic Blue Microphones at usb-0000:01:00.0-1.3, high speed : USB Audio
+
+Playback:
+  Status: Stop
+  Interface 2
+	Altset 1
+	Format: S16_LE
+	Channels: 2
+	Endpoint: 4 OUT (ADAPTIVE)
+	Rates: 44100
+	Data packet interval: 1000 us
+	Bits: 16
+	Channel map: FL FR
+  Interface 2
+	Altset 2
+	Format: S16_LE
+	Channels: 2
+	Endpoint: 4 OUT (ADAPTIVE)
+	Rates: 48000
+	Data packet interval: 1000 us
+	Bits: 16
+	Channel map: FL FR
+
+Capture:
+  Status: Stop
+  Interface 1
+	Altset 1
+	Format: S16_LE
+	Channels: 2
+	Endpoint: 1 IN (ASYNC)
+	Rates: 44100
+	Data packet interval: 1000 us
+	Bits: 16
+	Channel map: FL FR
+  Interface 1
+	Altset 2
+	Format: S16_LE
+	Channels: 2
+	Endpoint: 1 IN (ASYNC)
+	Rates: 48000
+	Data packet interval: 1000 us
+	Bits: 16
+	Channel map: FL FR
+`
+	result := getSampleRateToChannelMap(strings.Split(content, "\n"), zMode)
+	assert.Equal(2, len(result))
+	assert.Equal(2, result[44100])
+	assert.Equal(2, result[48000])
+
+	content = `
+C-Media Electronics Inc. USB Audio Device at usb-0000:01:00.0-1.3, full speed : USB Audio
+
+Playback:
+  Status: Stop
+  Interface 1
+	Altset 1
+	Format: S16_LE
+	Channels: 2
+	Endpoint: 1 OUT (ADAPTIVE)
+	Rates: 48000, 44100
+	Bits: 16
+	Channel map: FL FR
+
+Capture:
+  Status: Stop
+  Interface 2
+	Altset 1
+	Format: S16_LE
+	Channels: 1
+	Endpoint: 2 IN (SYNC)
+	Rates: 48000, 44100
+	Bits: 16
+	Channel map: MONO	
+`
+	result = getSampleRateToChannelMap(strings.Split(content, "\n"), zMode)
+	assert.Equal(2, len(result))
+	assert.Equal(2, result[44100])
+	assert.Equal(2, result[48000])
+
+	// Tests for mode == ZitaCapture
+	zMode = ZitaCapture
+	content = `
+Generic Blue Microphones at usb-0000:01:00.0-1.1, high speed : USB Audio
+
+Playback:
+  Status: Stop
+  Interface 2
+	Altset 1
+	Format: S16_LE
+	Channels: 2
+	Endpoint: 4 OUT (ADAPTIVE)
+	Rates: 44100
+	Data packet interval: 1000 us
+	Bits: 16
+	Channel map: FL FR
+  Interface 2
+	Altset 2
+	Format: S16_LE
+	Channels: 2
+	Endpoint: 4 OUT (ADAPTIVE)
+	Rates: 48000
+	Data packet interval: 1000 us
+	Bits: 16
+	Channel map: FL FR
+
+Capture:
+  Status: Stop
+  Interface 1
+	Altset 1
+	Format: S16_LE
+	Channels: 2
+	Endpoint: 1 IN (ASYNC)
+	Rates: 44100
+	Data packet interval: 1000 us
+	Bits: 16
+	Channel map: FL FR
+  Interface 1
+	Altset 2
+	Format: S16_LE
+	Channels: 2
+	Endpoint: 1 IN (ASYNC)
+	Rates: 48000
+	Data packet interval: 1000 us
+	Bits: 16
+	Channel map: FL FR	
+`
+	result = getSampleRateToChannelMap(strings.Split(content, "\n"), zMode)
+	assert.Equal(2, len(result))
+	assert.Equal(2, result[44100])
+	assert.Equal(2, result[48000])
+
+	content = `
+C-Media Electronics Inc. USB Audio Device at usb-0000:01:00.0-1.3, full speed : USB Audio
+
+Playback:
+  Status: Stop
+  Interface 1
+	Altset 1
+	Format: S16_LE
+	Channels: 2
+	Endpoint: 1 OUT (ADAPTIVE)
+	Rates: 48000, 44100
+	Bits: 16
+	Channel map: FL FR
+
+Capture:
+  Status: Stop
+  Interface 2
+	Altset 1
+	Format: S16_LE
+	Channels: 1
+	Endpoint: 2 IN (SYNC)
+	Rates: 48000, 44100
+	Bits: 16
+	Channel map: MONO	
+`
+	result = getSampleRateToChannelMap(strings.Split(content, "\n"), zMode)
+	assert.Equal(2, len(result))
+	assert.Equal(1, result[44100])
+	assert.Equal(1, result[48000])
+
+	content = `
+FMIC Fender Mustang Micro at usb-0000:01:00.0-1.1, full speed : USB Audio
+
+Capture:
+  Status: Stop
+  Interface 1
+	Altset 1
+	Format: S16_LE
+	Channels: 2
+	Endpoint: 1 IN (ASYNC)
+	Rates: 44100
+	Bits: 16
+	Channel map: FL FR
+`
+	result = getSampleRateToChannelMap(strings.Split(content, "\n"), zMode)
+	assert.Equal(1, len(result))
+	assert.Equal(2, result[44100])
+}
+
 func TestExtractNames(t *testing.T) {
 	assert := assert.New(t)
 
@@ -239,239 +504,36 @@ func TestExtractCardNum(t *testing.T) {
 	assert.Equal(2, cardNum["Microphone"])
 }
 
-func TestFindBestChannelNumber(t *testing.T) {
+func TestParseSampleRates(t *testing.T) {
 	assert := assert.New(t)
 
-	// Case for empty map
-	rateToChannelsMap := map[int]int{}
-	assert.Equal(-1, findBestChannelNumber(rateToChannelsMap, 44100))
-	assert.Equal(-1, findBestChannelNumber(rateToChannelsMap, 48000))
-	assert.Equal(-1, findBestChannelNumber(rateToChannelsMap, 96000))
+	line := "Rates: 44100"
+	result := parseSampleRates(line)
+	assert.Equal(1, len(result))
+	assert.Contains(result, 44100)
 
-	// Case for only 48000::1 in map
-	rateToChannelsMap = map[int]int{48000: 1}
-	assert.Equal(1, findBestChannelNumber(rateToChannelsMap, 44100))
-	assert.Equal(1, findBestChannelNumber(rateToChannelsMap, 48000))
-	assert.Equal(1, findBestChannelNumber(rateToChannelsMap, 96000))
+	line = "Rates: 48000, 44100"
+	result = parseSampleRates(line)
+	assert.Equal(2, len(result))
+	assert.Contains(result, 48000)
+	assert.Contains(result, 44100)
 
-	// Case for only 48000::2 in map
-	rateToChannelsMap = map[int]int{48000: 2}
-	assert.Equal(2, findBestChannelNumber(rateToChannelsMap, 44100))
-	assert.Equal(2, findBestChannelNumber(rateToChannelsMap, 48000))
-	assert.Equal(2, findBestChannelNumber(rateToChannelsMap, 96000))
+	line = "Rates: 192000, 96000"
+	result = parseSampleRates(line)
+	assert.Equal(2, len(result))
+	assert.Contains(result, 192000)
+	assert.Contains(result, 96000)
 
-	// Case for only 44100::3 in map
-	rateToChannelsMap = map[int]int{44100: 3}
-	assert.Equal(3, findBestChannelNumber(rateToChannelsMap, 44100))
-	assert.Equal(3, findBestChannelNumber(rateToChannelsMap, 48000))
-	assert.Equal(3, findBestChannelNumber(rateToChannelsMap, 96000))
+	line = "Rates: 192000"
+	result = parseSampleRates(line)
+	assert.Equal(1, len(result))
+	assert.Contains(result, 192000)
 
-	// Case for both 48000 and 44100 in map
-	rateToChannelsMap = map[int]int{48000: 1, 44100: 3}
-	assert.Equal(3, findBestChannelNumber(rateToChannelsMap, 44100))
-	assert.Equal(1, findBestChannelNumber(rateToChannelsMap, 48000))
-	assert.Equal(1, findBestChannelNumber(rateToChannelsMap, 96000))
+	line = "Rates: "
+	result = parseSampleRates(line)
+	assert.Equal(0, len(result))
 
-	// Case for multiple items in map
-	rateToChannelsMap = map[int]int{44100: 5, 48000: 2, 96000: 1}
-	assert.Equal(5, findBestChannelNumber(rateToChannelsMap, 44100))
-	assert.Equal(2, findBestChannelNumber(rateToChannelsMap, 48000))
-	assert.Equal(1, findBestChannelNumber(rateToChannelsMap, 96000))
-}
-
-func TestGetPlaybackChannelNum(t *testing.T) {
-	assert := assert.New(t)
-
-	content := `
-Generic Blue Microphones at usb-0000:01:00.0-1.3, high speed : USB Audio
-
-Playback:
-  Status: Stop
-  Interface 2
-	Altset 1
-	Format: S16_LE
-	Channels: 2
-	Endpoint: 4 OUT (ADAPTIVE)
-	Rates: 44100
-	Data packet interval: 1000 us
-	Bits: 16
-	Channel map: FL FR
-  Interface 2
-	Altset 2
-	Format: S16_LE
-	Channels: 2
-	Endpoint: 4 OUT (ADAPTIVE)
-	Rates: 48000
-	Data packet interval: 1000 us
-	Bits: 16
-	Channel map: FL FR
-
-Capture:
-  Status: Stop
-  Interface 1
-	Altset 1
-	Format: S16_LE
-	Channels: 2
-	Endpoint: 1 IN (ASYNC)
-	Rates: 44100
-	Data packet interval: 1000 us
-	Bits: 16
-	Channel map: FL FR
-  Interface 1
-	Altset 2
-	Format: S16_LE
-	Channels: 2
-	Endpoint: 1 IN (ASYNC)
-	Rates: 48000
-	Data packet interval: 1000 us
-	Bits: 16
-	Channel map: FL FR
-`
-	result := getPlaybackChannelNum(strings.Split(content, "\n"), 48000)
-	assert.Equal(2, result)
-	result = getPlaybackChannelNum(strings.Split(content, "\n"), 44100)
-	assert.Equal(2, result)
-	result = getPlaybackChannelNum(strings.Split(content, "\n"), 96000)
-	assert.Equal(2, result)
-
-	content = `
-C-Media Electronics Inc. USB Audio Device at usb-0000:01:00.0-1.3, full speed : USB Audio
-
-Playback:
-  Status: Stop
-  Interface 1
-	Altset 1
-	Format: S16_LE
-	Channels: 2
-	Endpoint: 1 OUT (ADAPTIVE)
-	Rates: 48000, 44100
-	Bits: 16
-	Channel map: FL FR
-
-Capture:
-  Status: Stop
-  Interface 2
-	Altset 1
-	Format: S16_LE
-	Channels: 1
-	Endpoint: 2 IN (SYNC)
-	Rates: 48000, 44100
-	Bits: 16
-	Channel map: MONO	
-`
-	result = getPlaybackChannelNum(strings.Split(content, "\n"), 48000)
-	assert.Equal(2, result)
-	result = getPlaybackChannelNum(strings.Split(content, "\n"), 44100)
-	assert.Equal(2, result)
-	result = getPlaybackChannelNum(strings.Split(content, "\n"), 96000)
-	assert.Equal(2, result)
-}
-
-func TestGetCaptureChannelNum(t *testing.T) {
-	assert := assert.New(t)
-
-	content := `
-Generic Blue Microphones at usb-0000:01:00.0-1.1, high speed : USB Audio
-
-Playback:
-  Status: Stop
-  Interface 2
-	Altset 1
-	Format: S16_LE
-	Channels: 2
-	Endpoint: 4 OUT (ADAPTIVE)
-	Rates: 44100
-	Data packet interval: 1000 us
-	Bits: 16
-	Channel map: FL FR
-  Interface 2
-	Altset 2
-	Format: S16_LE
-	Channels: 2
-	Endpoint: 4 OUT (ADAPTIVE)
-	Rates: 48000
-	Data packet interval: 1000 us
-	Bits: 16
-	Channel map: FL FR
-
-Capture:
-  Status: Stop
-  Interface 1
-	Altset 1
-	Format: S16_LE
-	Channels: 2
-	Endpoint: 1 IN (ASYNC)
-	Rates: 44100
-	Data packet interval: 1000 us
-	Bits: 16
-	Channel map: FL FR
-  Interface 1
-	Altset 2
-	Format: S16_LE
-	Channels: 2
-	Endpoint: 1 IN (ASYNC)
-	Rates: 48000
-	Data packet interval: 1000 us
-	Bits: 16
-	Channel map: FL FR	
-`
-	result := getCaptureChannelNum(strings.Split(content, "\n"), 48000)
-	assert.Equal(2, result)
-	result = getCaptureChannelNum(strings.Split(content, "\n"), 44100)
-	assert.Equal(2, result)
-	result = getCaptureChannelNum(strings.Split(content, "\n"), 96000)
-	assert.Equal(2, result)
-
-	content = `
-C-Media Electronics Inc. USB Audio Device at usb-0000:01:00.0-1.3, full speed : USB Audio
-
-Playback:
-  Status: Stop
-  Interface 1
-	Altset 1
-	Format: S16_LE
-	Channels: 2
-	Endpoint: 1 OUT (ADAPTIVE)
-	Rates: 48000, 44100
-	Bits: 16
-	Channel map: FL FR
-
-Capture:
-  Status: Stop
-  Interface 2
-	Altset 1
-	Format: S16_LE
-	Channels: 1
-	Endpoint: 2 IN (SYNC)
-	Rates: 48000, 44100
-	Bits: 16
-	Channel map: MONO	
-`
-	result = getCaptureChannelNum(strings.Split(content, "\n"), 48000)
-	assert.Equal(1, result)
-	result = getCaptureChannelNum(strings.Split(content, "\n"), 44100)
-	assert.Equal(1, result)
-	result = getCaptureChannelNum(strings.Split(content, "\n"), 96000)
-	assert.Equal(1, result)
-
-	content = `
-FMIC Fender Mustang Micro at usb-0000:01:00.0-1.1, full speed : USB Audio
-
-Capture:
-  Status: Stop
-  Interface 1
-	Altset 1
-	Format: S16_LE
-	Channels: 2
-	Endpoint: 1 IN (ASYNC)
-	Rates: 44100
-	Bits: 16
-	Channel map: FL FR
-`
-	result = getCaptureChannelNum(strings.Split(content, "\n"), 48000)
-	assert.Equal(2, result)
-	result = getCaptureChannelNum(strings.Split(content, "\n"), 44100)
-	assert.Equal(2, result)
-	result = getCaptureChannelNum(strings.Split(content, "\n"), 96000)
-	assert.Equal(2, result)
+	line = "Rates: blahblah"
+	result = parseSampleRates(line)
+	assert.Equal(0, len(result))
 }
