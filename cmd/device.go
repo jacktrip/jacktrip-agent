@@ -334,7 +334,7 @@ func updateALSASettings(config client.AgentConfig) {
 	deviceCardMap := getDeviceToNumMappings()
 	for device, card := range deviceCardMap {
 		controls := getALSAControls(card)
-		for control, _ := range controls {
+		for control := range controls {
 			if strings.HasSuffix(control, "Playback Volume") {
 				setALSAControl(control, card, config.PlaybackVolume)
 			} else if strings.HasSuffix(control, "Capture Volume") {
