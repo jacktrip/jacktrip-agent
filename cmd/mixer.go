@@ -140,18 +140,24 @@ func (dmm *DeviceMixingManager) SynchronizeConnections(config client.AgentConfig
 }
 
 func (dmm *DeviceMixingManager) connectZita(mode ZitaMode, device string, config client.AgentConfig) error {
-	// check if the device has support for the server sampleRate
-	stream0, ok := dmm.DeviceStream0Mapping[device]
-	if !ok {
-		log.Info("Stream0 info does not exist", "device", device)
-		return nil
-	}
+	var targetSampleRate, channelCount int
+	if device == "b1" || device == "Headphones" {
+		targetSampleRate = 48000
+		channelCount = 2
+	} else {
+		// check if the device has support for the server sampleRate
+		stream0, ok := dmm.DeviceStream0Mapping[device]
+		if !ok {
+			log.Info("Stream0 info does not exist", "device", device)
+			return nil
+		}
 
-	sampleRateToChannels := getSampleRateToChannelMap(stream0, mode)
-	targetSampleRate, channelCount := findBestSampleRateAndChannel(sampleRateToChannels, config.SampleRate)
-	if channelCount == -1 {
-		log.Info(fmt.Sprintf("Channel count was not found for %s. Connection cannot not be established.", device))
-		return nil
+		sampleRateToChannels := getSampleRateToChannelMap(stream0, mode)
+		targetSampleRate, channelCount = findBestSampleRateAndChannel(sampleRateToChannels, config.SampleRate)
+		if channelCount == -1 {
+			log.Info(fmt.Sprintf("Channel count was not found for %s. Connection cannot not be established.", device))
+			return nil
+		}
 	}
 
 	// write a systemd config file for Zita Bridge parameters
@@ -342,7 +348,7 @@ func getSampleRateToChannelMap(sentences []string, mode ZitaMode) map[int]int {
 func extractNames(target string) map[string]bool {
 	names := map[string]bool{}
 	sentences := strings.Split(target, "\n")
-	r := regexp.MustCompile(`^card \d: (\w+) \[`)
+	r := regexp.MustCompile(`^card \d+: (\w+) \[`)
 	for _, sentence := range sentences {
 		subMatch := r.FindStringSubmatch(sentence)
 		if len(subMatch) > 1 && subMatch[1] != "sndrpihifiberry" { // exclude hifiberry since we won't use it
@@ -355,7 +361,7 @@ func extractNames(target string) map[string]bool {
 func extractCardNum(target string) map[string]int {
 	nameToNum := map[string]int{}
 	sentences := strings.Split(target, "\n")
-	r := regexp.MustCompile(`^ (\d) \[(\w+)\s*\]`)
+	r := regexp.MustCompile(`^ (\d+) \[(\w+)\s*\]`)
 	for _, sentence := range sentences {
 		result := r.FindAllStringSubmatch(sentence, -1)
 		if len(result) == 1 {

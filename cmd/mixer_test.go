@@ -462,6 +462,25 @@ card 2: Microphone [USB2.0 Microphone], device 0: USB Audio [USB Audio]
 	assert.Contains(names, "Device")
 	assert.Contains(names, "Microphones")
 	assert.Contains(names, "Microphone")
+
+	// Check devices with higher card numbers
+	content = `
+**** List of PLAYBACK Hardware Devices ****
+card 10: Device [USB Audio Device], device 0: USB Audio [USB Audio]
+	Subdevices: 1/1
+	Subdevice #0: subdevice #0
+card 20: Microphones [Blue Microphones], device 0: USB Audio [USB Audio]
+	Subdevices: 1/1
+	Subdevice #0: subdevice #0
+card 31: Microphone [USB2.0 Microphone], device 0: USB Audio [USB Audio]
+	Subdevices: 1/1
+	Subdevice #0: subdevice #0
+`
+	names = extractNames(content)
+	assert.Equal(3, len(names))
+	assert.Contains(names, "Device")
+	assert.Contains(names, "Microphones")
+	assert.Contains(names, "Microphone")
 }
 
 func TestExtractCardNum(t *testing.T) {
@@ -502,6 +521,21 @@ func TestExtractCardNum(t *testing.T) {
 	assert.Equal(0, cardNum["Microphones"])
 	assert.Equal(1, cardNum["Device"])
 	assert.Equal(2, cardNum["Microphone"])
+
+	// Check devices with higher card numbers
+	content = `
+ 31 [Microphones    ]: USB-Audio - Blue Microphones
+	Generic Blue Microphones at usb-0000:01:00.0-1.1, high speed
+ 101 [Device         ]: USB-Audio - USB Audio Device
+	C-Media Electronics Inc. USB Audio Device at usb-0000:01:00.0-1.3, full speed
+ 20 [Microphone     ]: USB-Audio - USB2.0 Microphone
+	Generic USB2.0 Microphone at usb-0000:01:00.0-1.2, high speed	
+`
+	cardNum = extractCardNum(content)
+	assert.Equal(3, len(cardNum))
+	assert.Equal(31, cardNum["Microphones"])
+	assert.Equal(101, cardNum["Device"])
+	assert.Equal(20, cardNum["Microphone"])
 }
 
 func TestParseSampleRates(t *testing.T) {
