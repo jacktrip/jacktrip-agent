@@ -140,24 +140,18 @@ func (dmm *DeviceMixingManager) SynchronizeConnections(config client.AgentConfig
 }
 
 func (dmm *DeviceMixingManager) connectZita(mode ZitaMode, device string, config client.AgentConfig) error {
-	var targetSampleRate, channelCount int
-	if device == "b1" || device == "Headphones" {
-		targetSampleRate = 48000
-		channelCount = 2
-	} else {
-		// check if the device has support for the server sampleRate
-		stream0, ok := dmm.DeviceStream0Mapping[device]
-		if !ok {
-			log.Info("Stream0 info does not exist", "device", device)
-			return nil
-		}
+	// check if the device has support for the server sampleRate
+	stream0, ok := dmm.DeviceStream0Mapping[device]
+	if !ok {
+		log.Info("Stream0 info does not exist", "device", device)
+		return nil
+	}
 
-		sampleRateToChannels := getSampleRateToChannelMap(stream0, mode)
-		targetSampleRate, channelCount = findBestSampleRateAndChannel(sampleRateToChannels, config.SampleRate)
-		if channelCount == -1 {
-			log.Info(fmt.Sprintf("Channel count was not found for %s. Connection cannot not be established.", device))
-			return nil
-		}
+	sampleRateToChannels := getSampleRateToChannelMap(stream0, mode)
+	targetSampleRate, channelCount := findBestSampleRateAndChannel(sampleRateToChannels, config.SampleRate)
+	if channelCount == -1 {
+		log.Info(fmt.Sprintf("Channel count was not found for %s. Connection cannot not be established.", device))
+		return nil
 	}
 
 	// write a systemd config file for Zita Bridge parameters
