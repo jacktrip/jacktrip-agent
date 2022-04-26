@@ -159,6 +159,8 @@ func runOnDevice(apiOrigin string) {
 func deviceConfigUpdateHandler(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager, dmm *DeviceMixingManager) {
 	defer wg.Done()
 	log.Info("Starting deviceConfigUpdateHandler")
+	firstConfig := true
+
 	for {
 		newDeviceConfig, ok := <-wsm.ConfigChannel
 		if !ok {
@@ -170,7 +172,7 @@ func deviceConfigUpdateHandler(wg *sync.WaitGroup, beat *client.DeviceHeartbeat,
 		currentDeviceConfig.Broadcast = newDeviceConfig.Broadcast
 		currentDeviceConfig.ExpiresAt = newDeviceConfig.ExpiresAt
 
-		if newDeviceConfig != currentDeviceConfig {
+		if firstConfig || newDeviceConfig != currentDeviceConfig {
 			// remove secrets before logging
 			sanitizedDeviceConfig := newDeviceConfig
 			sanitizedDeviceConfig.AuthToken = strings.Repeat("X", len(newDeviceConfig.AuthToken))
@@ -180,7 +182,9 @@ func deviceConfigUpdateHandler(wg *sync.WaitGroup, beat *client.DeviceHeartbeat,
 			if wsm.IsInitialized && (!bool(newDeviceConfig.Enabled) || newDeviceConfig.Host == "") {
 				wsm.CloseConnection()
 			}
-			handleDeviceUpdate(beat, wsm.Credentials, newDeviceConfig, dmm)
+			// Force ALSA updates on the first config received
+			handleDeviceUpdate(beat, wsm.Credentials, newDeviceConfig, dmm, firstConfig)
+			firstConfig = false
 		}
 	}
 }
@@ -244,14 +248,14 @@ func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm 
 }
 
 // handleDeviceUpdate handles updates to device configuratiosn
-func handleDeviceUpdate(beat *client.DeviceHeartbeat, credentials client.AgentCredentials, config client.AgentConfig, dmm *DeviceMixingManager) {
+func handleDeviceUpdate(beat *client.DeviceHeartbeat, credentials client.AgentCredentials, config client.AgentConfig, dmm *DeviceMixingManager, force bool) {
 	// update current config sooner, so that other goroutines will have the most up-to-date version
 	lastDeviceConfig := currentDeviceConfig
 	currentDeviceConfig = config
 
 	// update ALSA card settings
-	if config.ALSAConfig != lastDeviceConfig.ALSAConfig {
-		updateALSASettings(config)
+	if force || config.ALSAConfig != lastDeviceConfig.ALSAConfig {
+		updateALSASettings(config.ALSAConfig)
 	}
 
 	// check if ALSA card settings was the only change
@@ -330,7 +334,7 @@ func getSoundDeviceType() string {
 }
 
 // updateALSASettings is used to update the settings for an ALSA sound card
-func updateALSASettings(config client.AgentConfig) {
+func updateALSASettings(config client.ALSAConfig) {
 	deviceCardMap := getDeviceToNumMappings()
 	for device, card := range deviceCardMap {
 		controls := getALSAControls(card)
