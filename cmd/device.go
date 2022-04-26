@@ -182,8 +182,9 @@ func deviceConfigUpdateHandler(wg *sync.WaitGroup, beat *client.DeviceHeartbeat,
 			if wsm.IsInitialized && (!bool(newDeviceConfig.Enabled) || newDeviceConfig.Host == "") {
 				wsm.CloseConnection()
 			}
-			// Force ALSA updates on the first config received
-			handleDeviceUpdate(beat, wsm.Credentials, newDeviceConfig, dmm, firstConfig)
+			// Force ALSA updates on the first config received if using the analog bridge
+			force := firstConfig && strings.HasPrefix(soundDeviceName, "sndrpihifiberry")
+			handleDeviceUpdate(beat, wsm.Credentials, newDeviceConfig, dmm, force)
 			firstConfig = false
 		}
 	}
