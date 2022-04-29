@@ -61,14 +61,26 @@ type ALSAConfig struct {
 	// If true, apply volume boost for audio capture or input
 	CaptureBoost types.BitBool `json:"captureBoost" db:"capture_boost"`
 
-	// If true, apply volume boost for audio playback or output
-	PlaybackBoost types.BitBool `json:"playbackBoost" db:"playback_boost"`
+	// If true, audio capture or input will be muted
+	CaptureMute types.BitBool `json:"captureMute" db:"capture_mute"`
 
 	// Volume level percent (0-100) for audio capture or input
 	CaptureVolume int `json:"captureVolume" db:"capture_volume"`
 
+	// If true, apply volume boost for audio playback or output
+	PlaybackBoost types.BitBool `json:"playbackBoost" db:"playback_boost"`
+
+	// If true, audio playback or output will be muted
+	PlaybackMute types.BitBool `json:"playbackMute" db:"playback_mute"`
+
 	// Volume level percent (0-100) for audio playback or output
 	PlaybackVolume int `json:"playbackVolume" db:"playback_volume"`
+
+	// If true, local monitor output will be muted
+	MonitorMute types.BitBool `json:"monitorMute" db:"monitor_mute"`
+
+	// Volume level percent (0-100) for local monitor output
+	MonitorVolume int `json:"monitorVolume" db:"monitor_volume"`
 }
 
 // AgentConfig defines active configuration for an agent
