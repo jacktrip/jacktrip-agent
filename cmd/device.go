@@ -54,6 +54,9 @@ const (
 
 	// PathToAsoundCards is the path to the ALSA card list
 	PathToAsoundCards = "/proc/asound/cards"
+
+	// ALSAInputSourceToken is a regex pattern to determine if an ALSA control is used for input: https://01.org/linuxgraphics/gfx-docs/drm/sound/designs/control-names.html
+	ALSAInputSourceToken = `Mic|Headset|ADC`
 )
 
 var ac *AutoConnector
@@ -336,32 +339,49 @@ func getSoundDeviceType() string {
 
 // updateALSASettings is used to update the settings for an ALSA sound card
 func updateALSASettings(config client.ALSAConfig) {
+	var val int
+	re := regexp.MustCompile(ALSAInputSourceToken)
 	deviceCardMap := getDeviceToNumMappings()
 	for device, card := range deviceCardMap {
 		controls := getALSAControls(card)
 		for control := range controls {
+			isInputSource := re.MatchString(control)
 			if strings.HasSuffix(control, "Playback Volume") {
-				setALSAControl(control, card, config.PlaybackVolume)
+				if isInputSource {
+					setALSAControl(card, control, fmt.Sprintf("%d%%", config.MonitorVolume))
+				} else {
+					setALSAControl(card, control, fmt.Sprintf("%d%%", config.PlaybackVolume))
+				}
 			} else if strings.HasSuffix(control, "Capture Volume") {
-				setALSAControl(control, card, config.CaptureVolume)
+				setALSAControl(card, control, fmt.Sprintf("%d%%", config.CaptureVolume))
+			} else if strings.HasSuffix(control, "Playback Switch") {
+				if isInputSource {
+					val = boolToInt(config.MonitorMute)
+					setALSAControl(card, control, fmt.Sprintf("%d", val))
+				} else {
+					val = boolToInt(config.PlaybackMute)
+					setALSAControl(card, control, fmt.Sprintf("%d", val))
+				}
+			} else if strings.HasSuffix(control, "Capture Switch") {
+				val = boolToInt(config.CaptureMute)
+				setALSAControl(card, control, fmt.Sprintf("%d", val))
 			}
 		}
 		// For HiFiBerry cards, always enable this "Analogue Playback Volume" option
 		if strings.HasPrefix(device, "snd_rpi_hifiberry_dacplusadc") {
-			setALSAControl("Analogue Playback Volume", card, 100)
+			setALSAControl(card, "Analogue Playback Volume", "100%")
 		}
 	}
 }
 
 // setALSAControl sets the value of an ALSA control
-func setALSAControl(control string, card, value int) {
-	percentage := fmt.Sprintf("%d%%", value)
-	cmd := exec.Command("/usr/bin/amixer", "-c", fmt.Sprintf("%d", card), "cset", fmt.Sprintf("name='%s'", control), "--", percentage)
+func setALSAControl(card int, control, value string) {
+	cmd := exec.Command("/usr/bin/amixer", "-c", fmt.Sprintf("%d", card), "cset", fmt.Sprintf("name='%s'", control), "--", value)
 	_, err := cmd.Output()
 	if err != nil {
 		log.Error(err, "Unable to set ALSA control", "card", card, "control", control)
 	}
-	log.Info("Updated ALSA control", "card", card, "control", control, "value", percentage)
+	log.Info("Updated ALSA control", "card", card, "control", control, "value", value)
 }
 
 // getALSAControls returns a map of available capture/playback volume controls for a specific card
@@ -378,7 +398,7 @@ func getALSAControls(card int) map[string]bool {
 func parseALSAControls(output string) map[string]bool {
 	controls := map[string]bool{}
 	lines := strings.Split(output, "\n")
-	r := regexp.MustCompile(`numid=(\d+),iface=(\w+),name='(.*\s(Playback|Capture) Volume)'`)
+	r := regexp.MustCompile(`numid=(\d+),iface=(\w+),name='(.* (Playback|Capture) (Volume|Switch))'`)
 	for _, line := range lines {
 		matches := r.FindAllStringSubmatch(line, -1)
 		if len(matches) == 1 {

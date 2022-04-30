@@ -17,6 +17,7 @@ package main
 import (
 	"testing"
 
+	"github.com/jmoiron/sqlx/types"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -30,4 +31,17 @@ func TestMax(t *testing.T) {
 	assert.Equal(5, max(2, 5))
 	assert.Equal(1, max(0, 1))
 	assert.Equal(1, max(1, 0))
+}
+
+func TestBoolToInt(t *testing.T) {
+	assert := assert.New(t)
+
+	// explicitly check types.BitBool input
+	yes := types.BitBool(true)
+	assert.Equal(1, boolToInt(yes))
+	no := types.BitBool(false)
+	assert.Equal(0, boolToInt(no))
+	// explicitly check bool input
+	assert.Equal(1, boolToInt(true))
+	assert.Equal(0, boolToInt(false))
 }

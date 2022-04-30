@@ -18,6 +18,8 @@ import (
 	"math"
 	"math/rand"
 	"time"
+
+	"github.com/jmoiron/sqlx/types"
 )
 
 const (
@@ -63,4 +65,12 @@ func max(a, b int) int {
 		return b
 	}
 	return a
+}
+
+// boolToInt converts a boolean to an integer
+func boolToInt(b types.BitBool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
