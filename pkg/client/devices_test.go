@@ -55,13 +55,17 @@ func TestALSAConfig(t *testing.T) {
 	var target ALSAConfig
 
 	// Parse JSON into ALSAConfig struct
-	raw = `{"captureBoost": true, "playbackBoost": 0, "captureVolume": 100, "playbackVolume": 0}`
+	raw = `{"captureBoost": true, "playbackBoost": 0, "captureVolume": 100, "captureMute": true, "playbackVolume": 0, "playbackMute": false, "monitorVolume": 51, "monitorMute": true}`
 	target = ALSAConfig{}
 	json.Unmarshal([]byte(raw), &target)
 	assert.Equal(true, bool(target.CaptureBoost))
 	assert.Equal(false, bool(target.PlaybackBoost))
 	assert.Equal(100, target.CaptureVolume)
+	assert.Equal(true, bool(target.CaptureMute))
 	assert.Equal(0, target.PlaybackVolume)
+	assert.Equal(false, bool(target.PlaybackMute))
+	assert.Equal(51, target.MonitorVolume)
+	assert.Equal(true, bool(target.MonitorMute))
 }
 
 func TestPingStats(t *testing.T) {
