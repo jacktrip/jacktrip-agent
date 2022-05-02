@@ -100,4 +100,18 @@ numid=2,iface=PCM,name='Playback Channel Map'
 	assert.Contains(result, "Headphone Playback Volume")
 	assert.Contains(result, "Headphone Playback Switch")
 	assert.Contains(result, "Sidetone Playback Switch")
+
+	output = `
+numid=9,iface=CARD,name='Keep Interface'
+numid=6,iface=MIXER,name='Headphone Playback Switch'
+numid=7,iface=MIXER,name='Headphone Playback Volume'
+numid=3,iface=MIXER,name='Mic Capture Switch'
+numid=4,iface=MIXER,name='Capture Volume'
+`
+	result = parseALSAControls(output)
+	assert.Equal(4, len(result))
+	assert.Contains(result, "Capture Volume")
+	assert.Contains(result, "Mic Capture Switch")
+	assert.Contains(result, "Headphone Playback Volume")
+	assert.Contains(result, "Headphone Playback Switch")
 }

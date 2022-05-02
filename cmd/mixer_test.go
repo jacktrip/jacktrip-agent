@@ -486,12 +486,24 @@ card 31: Microphone [USB2.0 Microphone], device 0: USB Audio [USB Audio]
 func TestExtractCardNum(t *testing.T) {
 	assert := assert.New(t)
 
-	// Check 1 device
+	// Check hifiberry card
 	content := `
+ 0 [sndrpihifiberry]: HifiberryDacpAd - snd_rpi_hifiberry_dacplusadcpro
+	snd_rpi_hifiberry_dacplusadcpro
+ 1 [Microphones    ]: USB-Audio - Blue Microphones
+	Generic Blue Microphones at usb-0000:01:00.0-1.3, high speed
+`
+	cardNum := extractCardNum(content)
+	assert.Equal(2, len(cardNum))
+	assert.Equal(0, cardNum["sndrpihifiberry"])
+	assert.Equal(1, cardNum["Microphones"])
+
+	// Check 1 device
+	content = `
  2 [Microphone     ]: USB-Audio - USB2.0 Microphone
 	Generic USB2.0 Microphone at usb-0000:01:00.0-1.2, high speed
 `
-	cardNum := extractCardNum(content)
+	cardNum = extractCardNum(content)
 	assert.Equal(1, len(cardNum))
 	assert.Equal(2, cardNum["Microphone"])
 

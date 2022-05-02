@@ -55,8 +55,8 @@ const (
 	// PathToAsoundCards is the path to the ALSA card list
 	PathToAsoundCards = "/proc/asound/cards"
 
-	// ALSAInputSourceToken is a regex pattern to determine if an ALSA control is used for input: https://01.org/linuxgraphics/gfx-docs/drm/sound/designs/control-names.html
-	ALSAInputSourceToken = `Mic|Headset|ADC`
+	// ALSAInputSourceToken is a regex pattern to determine if an ALSA control is used for input: https://www.kernel.org/doc/html/latest/sound/designs/control-names.html
+	ALSAInputSourceToken = `Mic|ADC`
 )
 
 var ac *AutoConnector
@@ -185,9 +185,8 @@ func deviceConfigUpdateHandler(wg *sync.WaitGroup, beat *client.DeviceHeartbeat,
 			if wsm.IsInitialized && (!bool(newDeviceConfig.Enabled) || newDeviceConfig.Host == "") {
 				wsm.CloseConnection()
 			}
-			// Force ALSA updates on the first config received if using the analog bridge
-			force := firstConfig && strings.HasPrefix(soundDeviceName, "sndrpihifiberry")
-			handleDeviceUpdate(beat, wsm.Credentials, newDeviceConfig, dmm, force)
+			// Force full device update on the first config received
+			handleDeviceUpdate(beat, wsm.Credentials, newDeviceConfig, dmm, firstConfig)
 			firstConfig = false
 		}
 	}
@@ -259,7 +258,7 @@ func handleDeviceUpdate(beat *client.DeviceHeartbeat, credentials client.AgentCr
 
 	// update ALSA card settings
 	if force || config.ALSAConfig != lastDeviceConfig.ALSAConfig {
-		updateALSASettings(config.ALSAConfig)
+		updateALSASettings(config)
 	}
 
 	// check if ALSA card settings was the only change
@@ -338,37 +337,44 @@ func getSoundDeviceType() string {
 }
 
 // updateALSASettings is used to update the settings for an ALSA sound card
-func updateALSASettings(config client.ALSAConfig) {
+func updateALSASettings(config client.AgentConfig) {
 	var val int
 	re := regexp.MustCompile(ALSAInputSourceToken)
 	deviceCardMap := getDeviceToNumMappings()
 	for device, card := range deviceCardMap {
 		controls := getALSAControls(card)
-		for control := range controls {
-			isInputSource := re.MatchString(control)
-			if strings.HasSuffix(control, "Playback Volume") {
-				if isInputSource {
-					setALSAControl(card, control, fmt.Sprintf("%d%%", config.MonitorVolume))
-				} else {
-					setALSAControl(card, control, fmt.Sprintf("%d%%", config.PlaybackVolume))
-				}
-			} else if strings.HasSuffix(control, "Capture Volume") {
-				setALSAControl(card, control, fmt.Sprintf("%d%%", config.CaptureVolume))
-			} else if strings.HasSuffix(control, "Playback Switch") {
-				if isInputSource {
-					val = boolToInt(config.MonitorMute)
+		// For digital bridges, set all control from AgentConfig
+		// For analog bridges:
+		//   * if EnableUSB is false, only set the hifiberry card controls
+		//   * if EnableUSB is true, set all controls
+		if soundDeviceName == "dummy" || bool(config.EnableUSB) || strings.Contains(device, "hifiberry") {
+			for control := range controls {
+				// NOTE: When setting mute controls, use the negation (because an ALSA value of 0 means mute)
+				isInputSource := re.MatchString(control)
+				if strings.HasSuffix(control, "Capture Volume") {
+					setALSAControl(card, control, fmt.Sprintf("%d%%", config.CaptureVolume))
+				} else if strings.HasSuffix(control, "Capture Switch") {
+					val = boolToInt(!config.CaptureMute)
 					setALSAControl(card, control, fmt.Sprintf("%d", val))
-				} else {
-					val = boolToInt(config.PlaybackMute)
-					setALSAControl(card, control, fmt.Sprintf("%d", val))
+				} else if strings.HasSuffix(control, "Playback Volume") {
+					if isInputSource {
+						setALSAControl(card, control, fmt.Sprintf("%d%%", config.MonitorVolume))
+					} else {
+						setALSAControl(card, control, fmt.Sprintf("%d%%", config.PlaybackVolume))
+					}
+				} else if strings.HasSuffix(control, "Playback Switch") {
+					if isInputSource {
+						val = boolToInt(!config.MonitorMute)
+						setALSAControl(card, control, fmt.Sprintf("%d", val))
+					} else {
+						val = boolToInt(!config.PlaybackMute)
+						setALSAControl(card, control, fmt.Sprintf("%d", val))
+					}
 				}
-			} else if strings.HasSuffix(control, "Capture Switch") {
-				val = boolToInt(config.CaptureMute)
-				setALSAControl(card, control, fmt.Sprintf("%d", val))
 			}
 		}
 		// For HiFiBerry cards, always enable this "Analogue Playback Volume" option
-		if strings.HasPrefix(device, "snd_rpi_hifiberry_dacplusadc") {
+		if strings.Contains(device, "hifiberry") {
 			setALSAControl(card, "Analogue Playback Volume", "100%")
 		}
 	}
@@ -398,7 +404,7 @@ func getALSAControls(card int) map[string]bool {
 func parseALSAControls(output string) map[string]bool {
 	controls := map[string]bool{}
 	lines := strings.Split(output, "\n")
-	r := regexp.MustCompile(`numid=(\d+),iface=(\w+),name='(.* (Playback|Capture) (Volume|Switch))'`)
+	r := regexp.MustCompile(`numid=(\d+),iface=(\w+),name='(.*(Playback Volume|Playback Switch|Capture Volume|Capture Switch))'`)
 	for _, line := range lines {
 		matches := r.FindAllStringSubmatch(line, -1)
 		if len(matches) == 1 {

@@ -135,7 +135,7 @@ func (dmm *DeviceMixingManager) SynchronizeConnections(config client.AgentConfig
 
 	// 8. Update ALSA settings
 	if len(newCaptureDevices) > 0 || len(newPlaybackDevices) > 0 {
-		updateALSASettings(config.ALSAConfig)
+		updateALSASettings(config)
 	}
 }
 
