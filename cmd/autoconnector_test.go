@@ -47,14 +47,14 @@ func TestHandlePortRegistration(t *testing.T) {
 	// Check that no messages appear when register=false
 	ac.handlePortRegistration(jack.PortId(0), false)
 	select {
-	case x := <-ac.RegistrationChan:
+	case x := <-ac.RegistrationChannel:
 		assert.Fail(fmt.Sprintf("no value should be read but got: %v", x))
 	default:
 	}
 	// Check that a message appears when register=true
 	ac.handlePortRegistration(jack.PortId(1), true)
 
-	x := <-ac.RegistrationChan
+	x := <-ac.RegistrationChannel
 	assert.Equal(jack.PortId(1), x)
 }
 
@@ -99,7 +99,7 @@ func TestOnShutdown(t *testing.T) {
 	}()
 	wg.Wait()
 	assert.Nil(ac.JackClient)
-	x := <-ac.RegistrationChan
+	x := <-ac.RegistrationChannel
 	assert.Equal(jack.PortId(0), x)
 }
 

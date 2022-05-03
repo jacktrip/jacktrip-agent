@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -22,6 +24,8 @@ const (
 	ZitaCapture ZitaMode = "a2j"
 	// ZitaPlayback is the zita-j2a service mode
 	ZitaPlayback ZitaMode = "j2a"
+	// PathToAlsaState is the location of the ALSA state file for a particular device
+	PathToAlsaState = "/tmp/default/asound-%s.state"
 	// PathToZitaConfig is a systemd conf file path for zita
 	PathToZitaConfig = "/tmp/default/zita-%s-conf"
 	// ZitaConfigTemplate is a set of parameters for zita systemd
@@ -39,20 +43,19 @@ type DeviceMixingManager struct {
 	DeviceCardMapping      map[string]int
 	DeviceStream0Mapping   map[string][]string
 	mutex                  sync.Mutex
-	shutdown               chan struct{}
 }
 
 // Run a continuous loop performing device synchronization
-func (dmm *DeviceMixingManager) Run(wg *sync.WaitGroup) {
+func (dmm *DeviceMixingManager) Run(wg *sync.WaitGroup, ctx context.Context) {
 	defer wg.Done()
-	// loop channel is closed
+
 	for {
 		select {
 		case <-time.After(DetectDevicesInterval):
 			dmm.SynchronizeConnections(currentDeviceConfig)
-		case <-dmm.shutdown:
-			// exit if channel was closed
-			log.Info("Exiting due to shutdown request")
+		case <-ctx.Done():
+			dmm.Reset()
+			log.Info("Stopping device mixer")
 			return
 		}
 	}
@@ -65,20 +68,30 @@ func (dmm *DeviceMixingManager) Reset() {
 
 	if len(dmm.CurrentCaptureDevices) > 0 {
 		for device := range dmm.CurrentCaptureDevices {
+			// Stop zita service
 			serviceName := fmt.Sprintf(ZitaServiceNameTemplate, ZitaCapture, device)
 			killService(serviceName)
+			// Remove zita config
 			connectionName := fmt.Sprintf("%s-%s", ZitaCapture, device)
 			os.Remove(fmt.Sprintf(PathToZitaConfig, connectionName))
+			// Restore and cleanup ALSA state
+			restoreAlsaState(device)
+			os.Remove(fmt.Sprintf(PathToAlsaState, device))
 		}
 		dmm.CurrentCaptureDevices = map[string]bool{}
 	}
 
 	if len(dmm.CurrentPlaybackDevices) > 0 {
 		for device := range dmm.CurrentPlaybackDevices {
+			// Stop zita service
 			serviceName := fmt.Sprintf(ZitaServiceNameTemplate, ZitaPlayback, device)
 			killService(serviceName)
+			// Remove zita config
 			connectionName := fmt.Sprintf("%s-%s", ZitaPlayback, device)
 			os.Remove(fmt.Sprintf(PathToZitaConfig, connectionName))
+			// Restore and cleanup ALSA state
+			restoreAlsaState(device)
+			os.Remove(fmt.Sprintf(PathToAlsaState, device))
 		}
 		dmm.CurrentPlaybackDevices = map[string]bool{}
 	}
@@ -194,6 +207,10 @@ func (dmm *DeviceMixingManager) addActiveDevices(config client.AgentConfig, newD
 			dmm.DeviceStream0Mapping[device] = readCardStream0(cardNum)
 		}
 
+		// write the current state of the device to a file
+		storeAlsaState(device)
+
+		// establish zita <-> JACK connections
 		if err := dmm.connectZita(mode, device, config); err == nil {
 			currentDevices[device] = true
 		}
@@ -236,6 +253,30 @@ func writeConfig(path string, content string) error {
 	if err := ioutil.WriteFile(path, []byte(content), 0644); err != nil {
 		log.Error(err, "Error while writing config")
 		return err
+	}
+	return nil
+}
+
+func storeAlsaState(device string) error {
+	stateFile := fmt.Sprintf(PathToAlsaState, device)
+	if _, err := os.Stat(stateFile); errors.Is(err, os.ErrNotExist) {
+		_, err := exec.Command("alsactl", "store", "--file", stateFile, device).Output()
+		if err != nil {
+			log.Error(err, "Unable to store device state")
+			return err
+		}
+	}
+	return nil
+}
+
+func restoreAlsaState(device string) error {
+	stateFile := fmt.Sprintf(PathToAlsaState, device)
+	if _, err := os.Stat(stateFile); err == nil {
+		_, err := exec.Command("alsactl", "restore", "--file", stateFile, device).Output()
+		if err != nil {
+			log.Error(err, "Unable to restore device state")
+			return err
+		}
 	}
 	return nil
 }

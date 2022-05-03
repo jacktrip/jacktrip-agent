@@ -15,14 +15,17 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -69,6 +72,9 @@ var currentDeviceConfig client.AgentConfig
 func runOnDevice(apiOrigin string) {
 	log.Info("Running jacktrip-agent in device mode")
 
+	exit := make(chan os.Signal, 1)
+	signal.Notify(exit, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
+
 	// get sound device name and type
 	soundDeviceName = getSoundDeviceName()
 	soundDeviceType = getSoundDeviceType()
@@ -88,7 +94,8 @@ func runOnDevice(apiOrigin string) {
 	mac := getMACAddress()
 	credentials := getCredentials()
 
-	// setup wait group for multiple routines
+	// setup cancellation context and wait group for multiple routines
+	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
 
 	// start HTTP server to redirect requests
@@ -104,7 +111,7 @@ func runOnDevice(apiOrigin string) {
 		OptionsGetOnly(w, r)
 	})).Methods("OPTIONS")
 	wg.Add(1)
-	go runHTTPServer(&wg, router, ":80")
+	server := runHTTPServer(&wg, router, ":80")
 
 	// update avahi service config and restart daemon
 	beat := client.DeviceHeartbeat{
@@ -126,14 +133,15 @@ func runOnDevice(apiOrigin string) {
 		HeartbeatPath:    DeviceHeartbeatPath,
 	}
 	wg.Add(1)
-	go wsm.sendHeartbeatHandler(&wg)
+	go wsm.sendHeartbeatHandler(&wg, ctx)
+
 	wg.Add(1)
-	go wsm.recvConfigHandler(&wg)
+	go wsm.recvConfigHandler(&wg, ctx)
 
 	// Start JACK autoconnector
 	ac = NewAutoConnector()
 	wg.Add(1)
-	go ac.Run(&wg)
+	go ac.Run(&wg, ctx)
 
 	// Start device mixer
 	dmm := DeviceMixingManager{
@@ -141,64 +149,78 @@ func runOnDevice(apiOrigin string) {
 		CurrentPlaybackDevices: map[string]bool{},
 		DeviceStream0Mapping:   map[string][]string{},
 		DeviceCardMapping:      map[string]int{},
-		shutdown:               make(chan struct{}),
 	}
 	wg.Add(1)
-	go dmm.Run(&wg)
+	go dmm.Run(&wg, ctx)
 
 	// start sending heartbeats and updating agent configs
 	wg.Add(1)
-	go sendDeviceHeartbeats(&wg, &beat, &wsm, &dmm)
+	go sendDeviceHeartbeats(&wg, ctx, &beat, &wsm, &dmm)
 
 	// Start a config handler to update config changes
 	wg.Add(1)
-	go deviceConfigUpdateHandler(&wg, &beat, &wsm, &dmm)
+	go deviceConfigUpdateHandler(&wg, ctx, &beat, &wsm, &dmm)
+
+	// Wait for process exit signal, then terminate all goroutines
+	<-exit
+	shutdownHTTPServer(server)
+	if wsm.IsInitialized {
+		wsm.CloseConnection()
+	}
+	cancel()
 
 	// wait for everything to complete
 	wg.Wait()
 }
 
 // deviceConfigUpdateHandler receives and processes device config updates
-func deviceConfigUpdateHandler(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager, dmm *DeviceMixingManager) {
+func deviceConfigUpdateHandler(wg *sync.WaitGroup, ctx context.Context, beat *client.DeviceHeartbeat, wsm *WebSocketManager, dmm *DeviceMixingManager) {
 	defer wg.Done()
 	log.Info("Starting deviceConfigUpdateHandler")
 	firstConfig := true
 
 	for {
-		newDeviceConfig, ok := <-wsm.ConfigChannel
-		if !ok {
-			log.Info("Config channel is closed")
+		select {
+		case <-ctx.Done():
+			log.Info("Stopping deviceConfigUpdateHandler")
 			return
-		}
+		case newDeviceConfig := <-wsm.ConfigChannel:
+			// just copy over parameters that we want to silently ignore
+			currentDeviceConfig.Broadcast = newDeviceConfig.Broadcast
+			currentDeviceConfig.ExpiresAt = newDeviceConfig.ExpiresAt
 
-		// just copy over parameters that we want to silently ignore
-		currentDeviceConfig.Broadcast = newDeviceConfig.Broadcast
-		currentDeviceConfig.ExpiresAt = newDeviceConfig.ExpiresAt
+			if firstConfig || newDeviceConfig != currentDeviceConfig {
+				// remove secrets before logging
+				sanitizedDeviceConfig := newDeviceConfig
+				sanitizedDeviceConfig.AuthToken = strings.Repeat("X", len(newDeviceConfig.AuthToken))
+				log.Info("Config updated", "value", sanitizedDeviceConfig)
 
-		if firstConfig || newDeviceConfig != currentDeviceConfig {
-			// remove secrets before logging
-			sanitizedDeviceConfig := newDeviceConfig
-			sanitizedDeviceConfig.AuthToken = strings.Repeat("X", len(newDeviceConfig.AuthToken))
-			log.Info("Config updated", "value", sanitizedDeviceConfig)
-
-			// Check if the new config indicates a disconnect from an audio server. If yes, kill the existing socket as well.
-			if wsm.IsInitialized && (!bool(newDeviceConfig.Enabled) || newDeviceConfig.Host == "") {
-				wsm.CloseConnection()
+				// Check if the new config indicates a disconnect from an audio server. If yes, kill the existing socket as well.
+				if wsm.IsInitialized && (!bool(newDeviceConfig.Enabled) || newDeviceConfig.Host == "") {
+					wsm.CloseConnection()
+				}
+				// Force full device update on the first config received
+				handleDeviceUpdate(beat, wsm.Credentials, newDeviceConfig, dmm, firstConfig)
+				firstConfig = false
 			}
-			// Force full device update on the first config received
-			handleDeviceUpdate(beat, wsm.Credentials, newDeviceConfig, dmm, firstConfig)
-			firstConfig = false
 		}
 	}
 }
 
 // sendDeviceHeartbeats sends device heartbeat messages to the backend api, and receives config updates
-func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager, dmm *DeviceMixingManager) {
+func sendDeviceHeartbeats(wg *sync.WaitGroup, ctx context.Context, beat *client.DeviceHeartbeat, wsm *WebSocketManager, dmm *DeviceMixingManager) {
 	defer wg.Done()
-	log.Info("Sending device heartbeats")
+	log.Info("Starting sendDeviceHeartbeats")
 	firstHeartbeat := true
 
 	for {
+		select {
+		case <-ctx.Done():
+			log.Info("Stopping sendDeviceHeartbeats")
+			return
+		default:
+		}
+
 		// reconcile device version to handle first-time startup where patch files may be missing
 		if beat.Version == "" {
 			beat.Version = getPatchVersion()

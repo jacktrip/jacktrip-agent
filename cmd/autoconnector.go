@@ -15,6 +15,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"regexp"
@@ -42,23 +43,23 @@ const (
 
 // AutoConnector manages JACK clients and keep tracks of clients
 type AutoConnector struct {
-	Name             string
-	Channels         int
-	JTRegexp         *regexp.Regexp
-	JackClient       *jack.Client
-	ClientLock       sync.Mutex
-	KnownClients     map[string]int
-	RegistrationChan chan jack.PortId
+	Name                string
+	Channels            int
+	JTRegexp            *regexp.Regexp
+	JackClient          *jack.Client
+	ClientLock          sync.Mutex
+	KnownClients        map[string]int
+	RegistrationChannel chan jack.PortId
 }
 
 // NewAutoConnector constructs a new instance of AutoConnector
 func NewAutoConnector() *AutoConnector {
 	return &AutoConnector{
-		Name:             "autoconnector",
-		Channels:         defaultChannels,
-		JTRegexp:         regexp.MustCompile(zitaPortToken),
-		KnownClients:     map[string]int{"Jamulus": 0},
-		RegistrationChan: make(chan jack.PortId, 200),
+		Name:                "autoconnector",
+		Channels:            defaultChannels,
+		JTRegexp:            regexp.MustCompile(zitaPortToken),
+		KnownClients:        map[string]int{"Jamulus": 0},
+		RegistrationChannel: make(chan jack.PortId, 200),
 	}
 }
 
@@ -66,7 +67,7 @@ func NewAutoConnector() *AutoConnector {
 // NOTE: We cannot modify ports in the callback thread so use a channel
 func (ac *AutoConnector) handlePortRegistration(port jack.PortId, register bool) {
 	if register {
-		ac.RegistrationChan <- port
+		ac.RegistrationChannel <- port
 	}
 }
 
@@ -200,6 +201,9 @@ func (ac *AutoConnector) connectAllZitaPorts() {
 	for _, flag := range flags {
 		ports := ac.JackClient.GetPorts(zitaPortToken, "", flag)
 		for _, port := range ports {
+			if strings.HasPrefix(port, "system:") {
+				continue
+			}
 			jackPort := ac.JackClient.GetPortByName(port)
 			if jackPort == nil {
 				log.Error(errors.New("connection failed"), "JACK port no longer exists", "name", port)
@@ -217,7 +221,7 @@ func (ac *AutoConnector) onShutdown() {
 	ac.JackClient = nil
 	// Wait for jackd to restart, then notify channel recipient to re-initialize client
 	time.Sleep(5 * time.Second)
-	ac.RegistrationChan <- jack.PortId(0)
+	ac.RegistrationChannel <- jack.PortId(0)
 }
 
 // InitJackClient creates a new JACK client
@@ -329,19 +333,25 @@ func (ac *AutoConnector) SetupClient() {
 }
 
 // Run is the primary loop that is connects new JACK ports upon registration
-func (ac *AutoConnector) Run(wg *sync.WaitGroup) {
+func (ac *AutoConnector) Run(wg *sync.WaitGroup, ctx context.Context) {
 	defer wg.Done()
+
 	for {
-		portID, ok := <-ac.RegistrationChan
-		if !ok {
-			log.Info("Registration channel is closed")
+		select {
+		case <-ctx.Done():
+			log.Info("Stopping autoconnector")
 			return
-		}
-		err := RetryWithBackoff(func() error {
-			return ac.connect(portID)
-		})
-		if err != nil {
-			log.Error(err, "Failed to connect ports")
+		case portID, ok := <-ac.RegistrationChannel:
+			if !ok {
+				log.Info("Registration channel is closed")
+				return
+			}
+			err := RetryWithBackoff(func() error {
+				return ac.connect(portID)
+			})
+			if err != nil {
+				log.Error(err, "Failed to connect ports")
+			}
 		}
 	}
 }
