@@ -15,6 +15,7 @@
 package main
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 	"time"
@@ -73,4 +74,12 @@ func boolToInt(b types.BitBool) int {
 		return 1
 	}
 	return 0
+}
+
+// volumeString returns a percentage string for volume controls
+func volumeString(vol int, mute types.BitBool) string {
+	if mute {
+		return "0%"
+	}
+	return fmt.Sprintf("%d%%", vol)
 }

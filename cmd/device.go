@@ -352,15 +352,15 @@ func updateALSASettings(config client.AgentConfig) {
 				// NOTE: When setting mute controls, use the negation (because an ALSA value of 0 means mute)
 				isInputSource := re.MatchString(control)
 				if strings.HasSuffix(control, "Capture Volume") {
-					setALSAControl(card, control, fmt.Sprintf("%d%%", config.CaptureVolume))
+					setALSAControl(card, control, volumeString(config.CaptureVolume, config.CaptureMute))
 				} else if strings.HasSuffix(control, "Capture Switch") {
 					val = boolToInt(!config.CaptureMute)
 					setALSAControl(card, control, fmt.Sprintf("%d", val))
 				} else if strings.HasSuffix(control, "Playback Volume") {
 					if isInputSource {
-						setALSAControl(card, control, fmt.Sprintf("%d%%", config.MonitorVolume))
+						setALSAControl(card, control, volumeString(config.MonitorVolume, config.MonitorMute))
 					} else {
-						setALSAControl(card, control, fmt.Sprintf("%d%%", config.PlaybackVolume))
+						setALSAControl(card, control, volumeString(config.PlaybackVolume, config.PlaybackMute))
 					}
 				} else if strings.HasSuffix(control, "Playback Switch") {
 					if isInputSource {
