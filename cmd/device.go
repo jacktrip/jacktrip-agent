@@ -357,7 +357,10 @@ func updateALSASettings(config client.AgentConfig) {
 					val = boolToInt(!config.CaptureMute)
 					setALSAControl(card, control, fmt.Sprintf("%d", val))
 				} else if strings.HasSuffix(control, "Playback Volume") {
-					if isInputSource {
+					// For HiFiBerry cards, always enable this "Analogue Playback Volume" option
+					if strings.Contains(device, "hifiberry") && control == "Analogue Playback Volume" {
+						setALSAControl(card, control, "100%")
+					} else if isInputSource {
 						setALSAControl(card, control, volumeString(config.MonitorVolume, config.MonitorMute))
 					} else {
 						setALSAControl(card, control, volumeString(config.PlaybackVolume, config.PlaybackMute))
@@ -372,10 +375,6 @@ func updateALSASettings(config client.AgentConfig) {
 					}
 				}
 			}
-		}
-		// For HiFiBerry cards, always enable this "Analogue Playback Volume" option
-		if strings.Contains(device, "hifiberry") {
-			setALSAControl(card, "Analogue Playback Volume", "100%")
 		}
 	}
 }
