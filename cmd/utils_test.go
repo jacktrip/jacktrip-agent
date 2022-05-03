@@ -45,3 +45,15 @@ func TestBoolToInt(t *testing.T) {
 	assert.Equal(1, boolToInt(true))
 	assert.Equal(0, boolToInt(false))
 }
+
+func TestVolumeString(t *testing.T) {
+	assert := assert.New(t)
+
+	yes := types.BitBool(true)
+	assert.Equal("0%", volumeString(10, yes))
+	assert.Equal("0%", volumeString(0, yes))
+
+	no := types.BitBool(false)
+	assert.Equal("30%", volumeString(30, no))
+	assert.Equal("100%", volumeString(100, no))
+}
