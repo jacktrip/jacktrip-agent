@@ -15,6 +15,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -76,18 +77,25 @@ func (wsm *WebSocketManager) InitConnection(wg *sync.WaitGroup, id string) error
 // CloseConnection closes an initialized connection in a websocketmanager
 func (wsm *WebSocketManager) CloseConnection() {
 	wsm.Mu.Lock()
+	defer wsm.Mu.Unlock()
 	wsm.Conn.Close()
 	wsm.IsInitialized = false
-	wsm.Mu.Unlock()
 }
 
 // Handlers to be used as a Goroutine
 
-func (wsm *WebSocketManager) recvConfigHandler(wg *sync.WaitGroup) {
+func (wsm *WebSocketManager) recvConfigHandler(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	log.Info("Starting recvConfigHandler")
 
 	for {
+		select {
+		case <-ctx.Done():
+			log.Info("Stopping recvConfigHandler")
+			return
+		default:
+		}
+
 		if !wsm.IsInitialized {
 			// sleep while not connected to avoid inf loop
 			time.Sleep(time.Second)
@@ -113,13 +121,19 @@ func (wsm *WebSocketManager) recvConfigHandler(wg *sync.WaitGroup) {
 	}
 }
 
-func (wsm *WebSocketManager) sendHeartbeatHandler(wg *sync.WaitGroup) {
+func (wsm *WebSocketManager) sendHeartbeatHandler(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	log.Info("Starting sendHeartbeatHandler")
 
 	for {
-		beat := <-wsm.HeartbeatChannel
-		if wsm.IsInitialized {
+		select {
+		case <-ctx.Done():
+			log.Info("Stopping sendHeartbeatHandler")
+			return
+		case beat := <-wsm.HeartbeatChannel:
+			if !wsm.IsInitialized {
+				continue
+			}
 			beatBytes, err := json.Marshal(beat)
 			if err != nil {
 				log.Error(err, "Failed to marshal heartbeat message")

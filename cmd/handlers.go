@@ -15,25 +15,43 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 )
 
 // runHTTPServer runs the agent's HTTP server
-func runHTTPServer(wg *sync.WaitGroup, router *mux.Router, address string) error {
-	defer wg.Done()
-	log.Info("Starting an agent HTTP server")
-	err := http.ListenAndServe(address, router)
-	if err != nil {
-		log.Error(err, "HTTP server error")
-	}
+func runHTTPServer(wg *sync.WaitGroup, router *mux.Router, address string) *http.Server {
+	log.Info("Starting agent HTTP server")
+	srv := &http.Server{Addr: address, Handler: router}
 
-	return err
+	go func() {
+		defer wg.Done()
+		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+			log.Error(err, "HTTP server error")
+		}
+	}()
+
+	log.Info("Successfully started agent HTTP server")
+	return srv
+}
+
+// shutdownHTTPServer gracefully terminates the HTTP server
+func shutdownHTTPServer(server *http.Server) {
+	// use a separate context to enforce server shutdown within time limit
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer func() {
+		cancel()
+	}()
+	if err := server.Shutdown(ctx); err != nil {
+		panic(err)
+	}
 }
 
 // handlePingRequest upgrades ping request to a websocket responder

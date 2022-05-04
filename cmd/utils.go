@@ -15,9 +15,12 @@
 package main
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 	"time"
+
+	"github.com/jmoiron/sqlx/types"
 )
 
 const (
@@ -63,4 +66,20 @@ func max(a, b int) int {
 		return b
 	}
 	return a
+}
+
+// boolToInt converts a boolean to an integer
+func boolToInt(b types.BitBool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// volumeString returns a percentage string for volume controls
+func volumeString(vol int, mute types.BitBool) string {
+	if mute {
+		return "0%"
+	}
+	return fmt.Sprintf("%d%%", vol)
 }

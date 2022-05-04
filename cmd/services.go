@@ -299,6 +299,7 @@ func stopService(conn *dbus.Conn, u dbus.UnitStatus) error {
 		return fmt.Errorf("failed to stop %s: job status=%s", u.Name, jobStatus)
 	}
 
+	log.Info("Finished stopping managed service", "name", u.Name)
 	return nil
 }
 

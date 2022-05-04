@@ -15,14 +15,17 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -54,6 +57,9 @@ const (
 
 	// PathToAsoundCards is the path to the ALSA card list
 	PathToAsoundCards = "/proc/asound/cards"
+
+	// ALSAInputSourceToken is a regex pattern to determine if an ALSA control is used for input: https://www.kernel.org/doc/html/latest/sound/designs/control-names.html
+	ALSAInputSourceToken = `Mic|ADC`
 )
 
 var ac *AutoConnector
@@ -65,6 +71,9 @@ var currentDeviceConfig client.AgentConfig
 // runOnDevice is used to run jacktrip-agent on a raspberry pi device
 func runOnDevice(apiOrigin string) {
 	log.Info("Running jacktrip-agent in device mode")
+
+	exit := make(chan os.Signal, 1)
+	signal.Notify(exit, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 
 	// get sound device name and type
 	soundDeviceName = getSoundDeviceName()
@@ -85,7 +94,8 @@ func runOnDevice(apiOrigin string) {
 	mac := getMACAddress()
 	credentials := getCredentials()
 
-	// setup wait group for multiple routines
+	// setup cancellation context and wait group for multiple routines
+	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
 
 	// start HTTP server to redirect requests
@@ -101,7 +111,7 @@ func runOnDevice(apiOrigin string) {
 		OptionsGetOnly(w, r)
 	})).Methods("OPTIONS")
 	wg.Add(1)
-	go runHTTPServer(&wg, router, ":80")
+	server := runHTTPServer(&wg, router, ":80")
 
 	// update avahi service config and restart daemon
 	beat := client.DeviceHeartbeat{
@@ -123,14 +133,15 @@ func runOnDevice(apiOrigin string) {
 		HeartbeatPath:    DeviceHeartbeatPath,
 	}
 	wg.Add(1)
-	go wsm.sendHeartbeatHandler(&wg)
+	go wsm.sendHeartbeatHandler(ctx, &wg)
+
 	wg.Add(1)
-	go wsm.recvConfigHandler(&wg)
+	go wsm.recvConfigHandler(ctx, &wg)
 
 	// Start JACK autoconnector
 	ac = NewAutoConnector()
 	wg.Add(1)
-	go ac.Run(&wg)
+	go ac.Run(ctx, &wg)
 
 	// Start device mixer
 	dmm := DeviceMixingManager{
@@ -138,65 +149,78 @@ func runOnDevice(apiOrigin string) {
 		CurrentPlaybackDevices: map[string]bool{},
 		DeviceStream0Mapping:   map[string][]string{},
 		DeviceCardMapping:      map[string]int{},
-		shutdown:               make(chan struct{}),
 	}
 	wg.Add(1)
-	go dmm.Run(&wg)
+	go dmm.Run(ctx, &wg)
 
 	// start sending heartbeats and updating agent configs
 	wg.Add(1)
-	go sendDeviceHeartbeats(&wg, &beat, &wsm, &dmm)
+	go sendDeviceHeartbeats(ctx, &wg, &beat, &wsm, &dmm)
 
 	// Start a config handler to update config changes
 	wg.Add(1)
-	go deviceConfigUpdateHandler(&wg, &beat, &wsm, &dmm)
+	go deviceConfigUpdateHandler(ctx, &wg, &beat, &wsm, &dmm)
+
+	// Wait for process exit signal, then terminate all goroutines
+	<-exit
+	shutdownHTTPServer(server)
+	if wsm.IsInitialized {
+		wsm.CloseConnection()
+	}
+	cancel()
 
 	// wait for everything to complete
 	wg.Wait()
 }
 
 // deviceConfigUpdateHandler receives and processes device config updates
-func deviceConfigUpdateHandler(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager, dmm *DeviceMixingManager) {
+func deviceConfigUpdateHandler(ctx context.Context, wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager, dmm *DeviceMixingManager) {
 	defer wg.Done()
 	log.Info("Starting deviceConfigUpdateHandler")
 	firstConfig := true
 
 	for {
-		newDeviceConfig, ok := <-wsm.ConfigChannel
-		if !ok {
-			log.Info("Config channel is closed")
+		select {
+		case <-ctx.Done():
+			log.Info("Stopping deviceConfigUpdateHandler")
 			return
-		}
+		case newDeviceConfig := <-wsm.ConfigChannel:
+			// just copy over parameters that we want to silently ignore
+			currentDeviceConfig.Broadcast = newDeviceConfig.Broadcast
+			currentDeviceConfig.ExpiresAt = newDeviceConfig.ExpiresAt
 
-		// just copy over parameters that we want to silently ignore
-		currentDeviceConfig.Broadcast = newDeviceConfig.Broadcast
-		currentDeviceConfig.ExpiresAt = newDeviceConfig.ExpiresAt
+			if firstConfig || newDeviceConfig != currentDeviceConfig {
+				// remove secrets before logging
+				sanitizedDeviceConfig := newDeviceConfig
+				sanitizedDeviceConfig.AuthToken = strings.Repeat("X", len(newDeviceConfig.AuthToken))
+				log.Info("Config updated", "value", sanitizedDeviceConfig)
 
-		if firstConfig || newDeviceConfig != currentDeviceConfig {
-			// remove secrets before logging
-			sanitizedDeviceConfig := newDeviceConfig
-			sanitizedDeviceConfig.AuthToken = strings.Repeat("X", len(newDeviceConfig.AuthToken))
-			log.Info("Config updated", "value", sanitizedDeviceConfig)
-
-			// Check if the new config indicates a disconnect from an audio server. If yes, kill the existing socket as well.
-			if wsm.IsInitialized && (!bool(newDeviceConfig.Enabled) || newDeviceConfig.Host == "") {
-				wsm.CloseConnection()
+				// Check if the new config indicates a disconnect from an audio server. If yes, kill the existing socket as well.
+				if wsm.IsInitialized && (!bool(newDeviceConfig.Enabled) || newDeviceConfig.Host == "") {
+					wsm.CloseConnection()
+				}
+				// Force full device update on the first config received
+				handleDeviceUpdate(beat, wsm.Credentials, newDeviceConfig, dmm, firstConfig)
+				firstConfig = false
 			}
-			// Force ALSA updates on the first config received if using the analog bridge
-			force := firstConfig && strings.HasPrefix(soundDeviceName, "sndrpihifiberry")
-			handleDeviceUpdate(beat, wsm.Credentials, newDeviceConfig, dmm, force)
-			firstConfig = false
 		}
 	}
 }
 
 // sendDeviceHeartbeats sends device heartbeat messages to the backend api, and receives config updates
-func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager, dmm *DeviceMixingManager) {
+func sendDeviceHeartbeats(ctx context.Context, wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager, dmm *DeviceMixingManager) {
 	defer wg.Done()
-	log.Info("Sending device heartbeats")
+	log.Info("Starting sendDeviceHeartbeats")
 	firstHeartbeat := true
 
 	for {
+		select {
+		case <-ctx.Done():
+			log.Info("Stopping sendDeviceHeartbeats")
+			return
+		default:
+		}
+
 		// reconcile device version to handle first-time startup where patch files may be missing
 		if beat.Version == "" {
 			beat.Version = getPatchVersion()
@@ -256,7 +280,7 @@ func handleDeviceUpdate(beat *client.DeviceHeartbeat, credentials client.AgentCr
 
 	// update ALSA card settings
 	if force || config.ALSAConfig != lastDeviceConfig.ALSAConfig {
-		updateALSASettings(config.ALSAConfig)
+		updateALSASettings(config)
 	}
 
 	// check if ALSA card settings was the only change
@@ -335,33 +359,56 @@ func getSoundDeviceType() string {
 }
 
 // updateALSASettings is used to update the settings for an ALSA sound card
-func updateALSASettings(config client.ALSAConfig) {
+func updateALSASettings(config client.AgentConfig) {
+	var val int
+	re := regexp.MustCompile(ALSAInputSourceToken)
 	deviceCardMap := getDeviceToNumMappings()
 	for device, card := range deviceCardMap {
 		controls := getALSAControls(card)
-		for control := range controls {
-			if strings.HasSuffix(control, "Playback Volume") {
-				setALSAControl(control, card, config.PlaybackVolume)
-			} else if strings.HasSuffix(control, "Capture Volume") {
-				setALSAControl(control, card, config.CaptureVolume)
+		// For digital bridges, set all control from AgentConfig
+		// For analog bridges:
+		//   * if EnableUSB is false, only set the hifiberry card controls
+		//   * if EnableUSB is true, set all controls
+		if soundDeviceName == "dummy" || bool(config.EnableUSB) || strings.Contains(device, "hifiberry") {
+			for control := range controls {
+				// NOTE: When setting mute controls, use the negation (because an ALSA value of 0 means mute)
+				isInputSource := re.MatchString(control)
+				if strings.HasSuffix(control, "Capture Volume") {
+					setALSAControl(card, control, volumeString(config.CaptureVolume, config.CaptureMute))
+				} else if strings.HasSuffix(control, "Capture Switch") {
+					val = boolToInt(!config.CaptureMute)
+					setALSAControl(card, control, fmt.Sprintf("%d", val))
+				} else if strings.HasSuffix(control, "Playback Volume") {
+					// For HiFiBerry cards, always enable this "Analogue Playback Volume" option
+					if strings.Contains(device, "hifiberry") && control == "Analogue Playback Volume" {
+						setALSAControl(card, control, "100%")
+					} else if isInputSource {
+						setALSAControl(card, control, volumeString(config.MonitorVolume, config.MonitorMute))
+					} else {
+						setALSAControl(card, control, volumeString(config.PlaybackVolume, config.PlaybackMute))
+					}
+				} else if strings.HasSuffix(control, "Playback Switch") {
+					if isInputSource {
+						val = boolToInt(!config.MonitorMute)
+						setALSAControl(card, control, fmt.Sprintf("%d", val))
+					} else {
+						val = boolToInt(!config.PlaybackMute)
+						setALSAControl(card, control, fmt.Sprintf("%d", val))
+					}
+				}
 			}
-		}
-		// For HiFiBerry cards, always enable this "Analogue Playback Volume" option
-		if strings.HasPrefix(device, "snd_rpi_hifiberry_dacplusadc") {
-			setALSAControl("Analogue Playback Volume", card, 100)
 		}
 	}
 }
 
 // setALSAControl sets the value of an ALSA control
-func setALSAControl(control string, card, value int) {
-	percentage := fmt.Sprintf("%d%%", value)
-	cmd := exec.Command("/usr/bin/amixer", "-c", fmt.Sprintf("%d", card), "cset", fmt.Sprintf("name='%s'", control), "--", percentage)
+func setALSAControl(card int, control, value string) {
+	cmd := exec.Command("/usr/bin/amixer", "-c", fmt.Sprintf("%d", card), "cset", fmt.Sprintf("name='%s'", control), "--", value)
 	_, err := cmd.Output()
 	if err != nil {
 		log.Error(err, "Unable to set ALSA control", "card", card, "control", control)
 	}
-	log.Info("Updated ALSA control", "card", card, "control", control, "value", percentage)
+	log.Info("Updated ALSA control", "card", card, "control", control, "value", value)
 }
 
 // getALSAControls returns a map of available capture/playback volume controls for a specific card
@@ -378,7 +425,7 @@ func getALSAControls(card int) map[string]bool {
 func parseALSAControls(output string) map[string]bool {
 	controls := map[string]bool{}
 	lines := strings.Split(output, "\n")
-	r := regexp.MustCompile(`numid=(\d+),iface=(\w+),name='(.*\s(Playback|Capture) Volume)'`)
+	r := regexp.MustCompile(`numid=(\d+),iface=(\w+),name='(.*(Playback Volume|Playback Switch|Capture Volume|Capture Switch))'`)
 	for _, line := range lines {
 		matches := r.FindAllStringSubmatch(line, -1)
 		if len(matches) == 1 {

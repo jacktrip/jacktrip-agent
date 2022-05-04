@@ -55,10 +55,11 @@ numid=14,iface=MIXER,name='Volume Ramp Up Rate'
 numid=15,iface=MIXER,name='Volume Ramp Up Step'
 `
 	result := parseALSAControls(output)
-	assert.Equal(3, len(result))
+	assert.Equal(4, len(result))
 	assert.Contains(result, "Digital Playback Volume")
 	assert.Contains(result, "Analogue Playback Volume")
 	assert.Contains(result, "ADC Capture Volume")
+	assert.Contains(result, "Digital Playback Switch")
 
 	output = `
 numid=10,iface=CARD,name='Keep Interface'
@@ -73,10 +74,13 @@ numid=1,iface=PCM,name='Capture Channel Map'
 numid=2,iface=PCM,name='Playback Channel Map'
 `
 	result = parseALSAControls(output)
-	assert.Equal(3, len(result))
+	assert.Equal(6, len(result))
 	assert.Contains(result, "Mic Playback Volume")
+	assert.Contains(result, "Mic Playback Switch")
 	assert.Contains(result, "Mic Capture Volume")
+	assert.Contains(result, "Mic Capture Switch")
 	assert.Contains(result, "Speaker Playback Volume")
+	assert.Contains(result, "Speaker Playback Switch")
 
 	output = `
 numid=9,iface=CARD,name='Keep Interface'
@@ -90,7 +94,24 @@ numid=1,iface=PCM,name='Capture Channel Map'
 numid=2,iface=PCM,name='Playback Channel Map'
 `
 	result = parseALSAControls(output)
-	assert.Equal(2, len(result))
+	assert.Equal(5, len(result))
 	assert.Contains(result, "Mic Capture Volume")
+	assert.Contains(result, "Mic Capture Switch")
 	assert.Contains(result, "Headphone Playback Volume")
+	assert.Contains(result, "Headphone Playback Switch")
+	assert.Contains(result, "Sidetone Playback Switch")
+
+	output = `
+numid=9,iface=CARD,name='Keep Interface'
+numid=6,iface=MIXER,name='Headphone Playback Switch'
+numid=7,iface=MIXER,name='Headphone Playback Volume'
+numid=3,iface=MIXER,name='Mic Capture Switch'
+numid=4,iface=MIXER,name='Capture Volume'
+`
+	result = parseALSAControls(output)
+	assert.Equal(4, len(result))
+	assert.Contains(result, "Capture Volume")
+	assert.Contains(result, "Mic Capture Switch")
+	assert.Contains(result, "Headphone Playback Volume")
+	assert.Contains(result, "Headphone Playback Switch")
 }
