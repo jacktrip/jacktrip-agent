@@ -333,7 +333,7 @@ func (ac *AutoConnector) SetupClient() {
 }
 
 // Run is the primary loop that is connects new JACK ports upon registration
-func (ac *AutoConnector) Run(wg *sync.WaitGroup, ctx context.Context) {
+func (ac *AutoConnector) Run(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	for {

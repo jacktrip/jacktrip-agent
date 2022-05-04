@@ -84,7 +84,7 @@ func (wsm *WebSocketManager) CloseConnection() {
 
 // Handlers to be used as a Goroutine
 
-func (wsm *WebSocketManager) recvConfigHandler(wg *sync.WaitGroup, ctx context.Context) {
+func (wsm *WebSocketManager) recvConfigHandler(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	log.Info("Starting recvConfigHandler")
 
@@ -121,7 +121,7 @@ func (wsm *WebSocketManager) recvConfigHandler(wg *sync.WaitGroup, ctx context.C
 	}
 }
 
-func (wsm *WebSocketManager) sendHeartbeatHandler(wg *sync.WaitGroup, ctx context.Context) {
+func (wsm *WebSocketManager) sendHeartbeatHandler(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	log.Info("Starting sendHeartbeatHandler")
 

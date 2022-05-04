@@ -46,7 +46,7 @@ type DeviceMixingManager struct {
 }
 
 // Run a continuous loop performing device synchronization
-func (dmm *DeviceMixingManager) Run(wg *sync.WaitGroup, ctx context.Context) {
+func (dmm *DeviceMixingManager) Run(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	for {

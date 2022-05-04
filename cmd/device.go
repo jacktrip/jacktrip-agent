@@ -133,15 +133,15 @@ func runOnDevice(apiOrigin string) {
 		HeartbeatPath:    DeviceHeartbeatPath,
 	}
 	wg.Add(1)
-	go wsm.sendHeartbeatHandler(&wg, ctx)
+	go wsm.sendHeartbeatHandler(ctx, &wg)
 
 	wg.Add(1)
-	go wsm.recvConfigHandler(&wg, ctx)
+	go wsm.recvConfigHandler(ctx, &wg)
 
 	// Start JACK autoconnector
 	ac = NewAutoConnector()
 	wg.Add(1)
-	go ac.Run(&wg, ctx)
+	go ac.Run(ctx, &wg)
 
 	// Start device mixer
 	dmm := DeviceMixingManager{
@@ -151,15 +151,15 @@ func runOnDevice(apiOrigin string) {
 		DeviceCardMapping:      map[string]int{},
 	}
 	wg.Add(1)
-	go dmm.Run(&wg, ctx)
+	go dmm.Run(ctx, &wg)
 
 	// start sending heartbeats and updating agent configs
 	wg.Add(1)
-	go sendDeviceHeartbeats(&wg, ctx, &beat, &wsm, &dmm)
+	go sendDeviceHeartbeats(ctx, &wg, &beat, &wsm, &dmm)
 
 	// Start a config handler to update config changes
 	wg.Add(1)
-	go deviceConfigUpdateHandler(&wg, ctx, &beat, &wsm, &dmm)
+	go deviceConfigUpdateHandler(ctx, &wg, &beat, &wsm, &dmm)
 
 	// Wait for process exit signal, then terminate all goroutines
 	<-exit
@@ -174,7 +174,7 @@ func runOnDevice(apiOrigin string) {
 }
 
 // deviceConfigUpdateHandler receives and processes device config updates
-func deviceConfigUpdateHandler(wg *sync.WaitGroup, ctx context.Context, beat *client.DeviceHeartbeat, wsm *WebSocketManager, dmm *DeviceMixingManager) {
+func deviceConfigUpdateHandler(ctx context.Context, wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager, dmm *DeviceMixingManager) {
 	defer wg.Done()
 	log.Info("Starting deviceConfigUpdateHandler")
 	firstConfig := true
@@ -208,7 +208,7 @@ func deviceConfigUpdateHandler(wg *sync.WaitGroup, ctx context.Context, beat *cl
 }
 
 // sendDeviceHeartbeats sends device heartbeat messages to the backend api, and receives config updates
-func sendDeviceHeartbeats(wg *sync.WaitGroup, ctx context.Context, beat *client.DeviceHeartbeat, wsm *WebSocketManager, dmm *DeviceMixingManager) {
+func sendDeviceHeartbeats(ctx context.Context, wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager, dmm *DeviceMixingManager) {
 	defer wg.Done()
 	log.Info("Starting sendDeviceHeartbeats")
 	firstHeartbeat := true
