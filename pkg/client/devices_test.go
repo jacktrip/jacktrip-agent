@@ -28,14 +28,25 @@ func TestDeviceConfig(t *testing.T) {
 	var target DeviceConfig
 
 	// Parse JSON into DeviceConfig struct
-	raw = `{"devicePort": 8000, "reverb": 42, "limiter": true, "compressor": 0, "quality": 2}`
+	raw = `{"devicePort": 8000, "reverb": 42, "limiter": true, "compressor": false, "quality": 2}`
 	target = DeviceConfig{}
 	json.Unmarshal([]byte(raw), &target)
 	assert.Equal(8000, target.DevicePort)
 	assert.Equal(42, target.Reverb)
+	assert.Equal(false, bool(target.EnableUSB))
 	assert.Equal(true, bool(target.Limiter))
 	assert.Equal(false, bool(target.Compressor))
 	assert.Equal(2, target.Quality)
+
+	raw = `{"devicePort": 8001, "reverb": 99, "limiter": false, "compressor": true, "enableUsb": true, "quality": 1}`
+	target = DeviceConfig{}
+	json.Unmarshal([]byte(raw), &target)
+	assert.Equal(8001, target.DevicePort)
+	assert.Equal(99, target.Reverb)
+	assert.Equal(true, bool(target.EnableUSB))
+	assert.Equal(false, bool(target.Limiter))
+	assert.Equal(true, bool(target.Compressor))
+	assert.Equal(1, target.Quality)
 }
 
 func TestALSAConfig(t *testing.T) {
@@ -44,13 +55,17 @@ func TestALSAConfig(t *testing.T) {
 	var target ALSAConfig
 
 	// Parse JSON into ALSAConfig struct
-	raw = `{"captureBoost": true, "playbackBoost": 0, "captureVolume": 100, "playbackVolume": 0}`
+	raw = `{"captureBoost": true, "playbackBoost": 0, "captureVolume": 100, "captureMute": true, "playbackVolume": 0, "playbackMute": false, "monitorVolume": 51, "monitorMute": true}`
 	target = ALSAConfig{}
 	json.Unmarshal([]byte(raw), &target)
 	assert.Equal(true, bool(target.CaptureBoost))
 	assert.Equal(false, bool(target.PlaybackBoost))
 	assert.Equal(100, target.CaptureVolume)
+	assert.Equal(true, bool(target.CaptureMute))
 	assert.Equal(0, target.PlaybackVolume)
+	assert.Equal(false, bool(target.PlaybackMute))
+	assert.Equal(51, target.MonitorVolume)
+	assert.Equal(true, bool(target.MonitorMute))
 }
 
 func TestPingStats(t *testing.T) {
@@ -77,13 +92,14 @@ func TestAgentConfig(t *testing.T) {
 	var target AgentConfig
 
 	// Parse JSON into AgentConfig struct
-	raw = `{"period": 3, "queueBuffer": 128, "devicePort": 8000, "reverb": 42, "limiter": true, "compressor": 0, "quality": 2, "captureBoost": true, "playbackBoost": 0, "captureVolume": 100, "playbackVolume": 0, "type": "JackTrip+Jamulus", "mixBranch": "main", "mixCode": "echo hi", "serverHost": "a.b.com", "serverPort": 8000, "sampleRate": 96000, "inputChannels": 2, "outputChannels": 2, "loopback": false, "enabled": true, "authToken": "foobar"}`
+	raw = `{"period": 3, "queueBuffer": 128, "devicePort": 8000, "reverb": 42, "limiter": true, "compressor": 0, "quality": 2, "captureBoost": true, "playbackBoost": 0, "captureVolume": 100, "playbackVolume": 0, "type": "JackTrip+Jamulus", "mixBranch": "main", "mixCode": "echo hi", "serverHost": "a.b.com", "serverPort": 8000, "sampleRate": 96000, "inputChannels": 2, "outputChannels": 2, "loopback": false, "enabled": true, "authToken": "foobar", "broadcast": 1, "expiresAt": "2020-04-09T13:00:00Z"}`
 	target = AgentConfig{}
 	json.Unmarshal([]byte(raw), &target)
 	assert.Equal(3, target.Period)
 	assert.Equal(128, target.QueueBuffer)
 	assert.Equal(8000, target.DevicePort)
 	assert.Equal(42, target.Reverb)
+	assert.Equal(false, bool(target.EnableUSB))
 	assert.Equal(true, bool(target.Limiter))
 	assert.Equal(false, bool(target.Compressor))
 	assert.Equal(2, target.Quality)
@@ -102,6 +118,8 @@ func TestAgentConfig(t *testing.T) {
 	assert.Equal(false, bool(target.LoopBack))
 	assert.Equal(true, bool(target.Enabled))
 	assert.Equal("foobar", target.AuthToken)
+	assert.Equal(Public, target.Broadcast)
+	assert.Equal(int64(1586437200), target.ExpiresAt.Unix())
 }
 
 func TestAgentCredentials(t *testing.T) {

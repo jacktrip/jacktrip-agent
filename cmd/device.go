@@ -15,13 +15,17 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
+	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -37,7 +41,7 @@ const (
 	PathToAvahiServiceFile = "/tmp/avahi/services/jacktrip-agent.service"
 
 	// JackDeviceConfigTemplate is the template used to generate /tmp/default/jack file on raspberry pi devices
-	JackDeviceConfigTemplate = "JACK_OPTS=-dalsa -dhw:%s --rate %d --period %d\n"
+	JackDeviceConfigTemplate = "JACK_OPTS=-d %s --rate %d --period %d\n"
 
 	// JackTripDeviceConfigTemplate is the template used to generate /tmp/default/jacktrip file  on raspberry pi devices
 	JackTripDeviceConfigTemplate = "JACKTRIP_OPTS=-t -z --udprt --receivechannels %d --sendchannels %d -C %s --peerport %d --bindport %d --clientname hubserver --remotename %s %s\n"
@@ -53,8 +57,12 @@ const (
 
 	// PathToAsoundCards is the path to the ALSA card list
 	PathToAsoundCards = "/proc/asound/cards"
+
+	// ALSAInputSourceToken is a regex pattern to determine if an ALSA control is used for input: https://www.kernel.org/doc/html/latest/sound/designs/control-names.html
+	ALSAInputSourceToken = `Mic|ADC`
 )
 
+var ac *AutoConnector
 var soundDeviceName = ""
 var soundDeviceType = ""
 var lastDeviceStatus = "starting"
@@ -63,6 +71,9 @@ var currentDeviceConfig client.AgentConfig
 // runOnDevice is used to run jacktrip-agent on a raspberry pi device
 func runOnDevice(apiOrigin string) {
 	log.Info("Running jacktrip-agent in device mode")
+
+	exit := make(chan os.Signal, 1)
+	signal.Notify(exit, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 
 	// get sound device name and type
 	soundDeviceName = getSoundDeviceName()
@@ -83,7 +94,8 @@ func runOnDevice(apiOrigin string) {
 	mac := getMACAddress()
 	credentials := getCredentials()
 
-	// setup wait group for multiple routines
+	// setup cancellation context and wait group for multiple routines
+	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
 
 	// start HTTP server to redirect requests
@@ -99,7 +111,7 @@ func runOnDevice(apiOrigin string) {
 		OptionsGetOnly(w, r)
 	})).Methods("OPTIONS")
 	wg.Add(1)
-	go runHTTPServer(&wg, router, ":80")
+	server := runHTTPServer(&wg, router, ":80")
 
 	// update avahi service config and restart daemon
 	beat := client.DeviceHeartbeat{
@@ -121,54 +133,94 @@ func runOnDevice(apiOrigin string) {
 		HeartbeatPath:    DeviceHeartbeatPath,
 	}
 	wg.Add(1)
-	go wsm.sendHeartbeatHandler(&wg)
+	go wsm.sendHeartbeatHandler(ctx, &wg)
+
 	wg.Add(1)
-	go wsm.recvConfigHandler(&wg)
+	go wsm.recvConfigHandler(ctx, &wg)
+
+	// Start JACK autoconnector
+	ac = NewAutoConnector()
+	wg.Add(1)
+	go ac.Run(ctx, &wg)
+
+	// Start device mixer
+	dmm := DeviceMixingManager{
+		CurrentCaptureDevices:  map[string]bool{},
+		CurrentPlaybackDevices: map[string]bool{},
+		DeviceStream0Mapping:   map[string][]string{},
+		DeviceCardMapping:      map[string]int{},
+	}
+	wg.Add(1)
+	go dmm.Run(ctx, &wg)
 
 	// start sending heartbeats and updating agent configs
 	wg.Add(1)
-	go sendDeviceHeartbeats(&wg, &beat, &wsm)
+	go sendDeviceHeartbeats(ctx, &wg, &beat, &wsm, &dmm)
 
 	// Start a config handler to update config changes
 	wg.Add(1)
-	go deviceConfigUpdateHandler(&wg, &beat, &wsm)
+	go deviceConfigUpdateHandler(ctx, &wg, &beat, &wsm, &dmm)
+
+	// Wait for process exit signal, then terminate all goroutines
+	<-exit
+	shutdownHTTPServer(server)
+	if wsm.IsInitialized {
+		wsm.CloseConnection()
+	}
+	cancel()
 
 	// wait for everything to complete
 	wg.Wait()
 }
 
 // deviceConfigUpdateHandler receives and processes device config updates
-func deviceConfigUpdateHandler(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager) {
+func deviceConfigUpdateHandler(ctx context.Context, wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager, dmm *DeviceMixingManager) {
 	defer wg.Done()
 	log.Info("Starting deviceConfigUpdateHandler")
-	for {
-		newDeviceConfig, ok := <-wsm.ConfigChannel
-		if !ok {
-			log.Info("Config channel is closed")
-			return
-		}
-		if newDeviceConfig != currentDeviceConfig {
-			// remove secrets before logging
-			sanitizedDeviceConfig := newDeviceConfig
-			sanitizedDeviceConfig.AuthToken = strings.Repeat("X", len(newDeviceConfig.AuthToken))
-			log.Info("Config updated", "value", sanitizedDeviceConfig)
+	firstConfig := true
 
-			// Check if the new config indicates a disconnect from an audio server. If yes, kill the existing socket as well.
-			if wsm.IsInitialized && (!bool(newDeviceConfig.Enabled) || newDeviceConfig.Host == "") {
-				wsm.CloseConnection()
+	for {
+		select {
+		case <-ctx.Done():
+			log.Info("Stopping deviceConfigUpdateHandler")
+			return
+		case newDeviceConfig := <-wsm.ConfigChannel:
+			// just copy over parameters that we want to silently ignore
+			currentDeviceConfig.Broadcast = newDeviceConfig.Broadcast
+			currentDeviceConfig.ExpiresAt = newDeviceConfig.ExpiresAt
+
+			if firstConfig || newDeviceConfig != currentDeviceConfig {
+				// remove secrets before logging
+				sanitizedDeviceConfig := newDeviceConfig
+				sanitizedDeviceConfig.AuthToken = strings.Repeat("X", len(newDeviceConfig.AuthToken))
+				log.Info("Config updated", "value", sanitizedDeviceConfig)
+
+				// Check if the new config indicates a disconnect from an audio server. If yes, kill the existing socket as well.
+				if wsm.IsInitialized && (!bool(newDeviceConfig.Enabled) || newDeviceConfig.Host == "") {
+					wsm.CloseConnection()
+				}
+				// Force full device update on the first config received
+				handleDeviceUpdate(beat, wsm.Credentials, newDeviceConfig, dmm, firstConfig)
+				firstConfig = false
 			}
-			handleDeviceUpdate(beat, wsm.Credentials, newDeviceConfig)
 		}
 	}
 }
 
 // sendDeviceHeartbeats sends device heartbeat messages to the backend api, and receives config updates
-func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager) {
+func sendDeviceHeartbeats(ctx context.Context, wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager, dmm *DeviceMixingManager) {
 	defer wg.Done()
-	log.Info("Sending device heartbeats")
+	log.Info("Starting sendDeviceHeartbeats")
 	firstHeartbeat := true
 
 	for {
+		select {
+		case <-ctx.Done():
+			log.Info("Stopping sendDeviceHeartbeats")
+			return
+		default:
+		}
+
 		// reconcile device version to handle first-time startup where patch files may be missing
 		if beat.Version == "" {
 			beat.Version = getPatchVersion()
@@ -221,13 +273,13 @@ func sendDeviceHeartbeats(wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm 
 }
 
 // handleDeviceUpdate handles updates to device configuratiosn
-func handleDeviceUpdate(beat *client.DeviceHeartbeat, credentials client.AgentCredentials, config client.AgentConfig) {
+func handleDeviceUpdate(beat *client.DeviceHeartbeat, credentials client.AgentCredentials, config client.AgentConfig, dmm *DeviceMixingManager, force bool) {
 	// update current config sooner, so that other goroutines will have the most up-to-date version
 	lastDeviceConfig := currentDeviceConfig
 	currentDeviceConfig = config
 
 	// update ALSA card settings
-	if config.ALSAConfig != lastDeviceConfig.ALSAConfig {
+	if force || config.ALSAConfig != lastDeviceConfig.ALSAConfig {
 		updateALSASettings(config)
 	}
 
@@ -237,10 +289,15 @@ func handleDeviceUpdate(beat *client.DeviceHeartbeat, credentials client.AgentCr
 		// more changes required -> reset everything
 
 		// update managed config files
-		updateServiceConfigs(config, strings.Replace(beat.MAC, ":", "", -1), false)
+		updateServiceConfigs(config, strings.Replace(beat.MAC, ":", "", -1))
 
 		// shutdown or restart managed services
-		restartAllServices(config, false)
+		ac.TeardownClient()
+		dmm.Reset()
+		restartAllServices(config)
+		if config.Enabled && config.Host != "" && config.Type != "" {
+			ac.SetupClient()
+		}
 	}
 
 	// update device status in avahi service config, if necessary
@@ -303,170 +360,79 @@ func getSoundDeviceType() string {
 
 // updateALSASettings is used to update the settings for an ALSA sound card
 func updateALSASettings(config client.AgentConfig) {
-	switch soundDeviceType {
-	case "snd_rpi_hifiberry_dacplusadc":
-		fallthrough
-	case "snd_rpi_hifiberry_dacplusadcpro":
-		updateALSASettingsHiFiBerry(config)
-	case "audioinjector-pi-soundcard":
-		updateALSASettingsAudioInjector(config)
-	case "USB Audio Device":
-		updateALSASettingsUSBAudioDevice(config)
-	case "USB PnP Sound Device":
-		updateALSASettingsUSBPnPSoundDevice(config)
-	default:
-		log.Info("No ALSA alsa controls for sound device", "type", soundDeviceType)
-	}
-}
-
-// updateALSASettings is used to update the settings for a HiFiBerry sound card
-func updateALSASettingsHiFiBerry(config client.AgentConfig) {
-	var v int
-	amixerDevice := fmt.Sprintf("hw:%s", soundDeviceName)
-
-	// ignore capture boost
-	/*
-		if config.CaptureBoost {
-			v = 104
-		} else {
-			v = 0
+	var val int
+	re := regexp.MustCompile(ALSAInputSourceToken)
+	deviceCardMap := getDeviceToNumMappings()
+	for device, card := range deviceCardMap {
+		controls := getALSAControls(card)
+		// For digital bridges, set all control from AgentConfig
+		// For analog bridges:
+		//   * if EnableUSB is false, only set the hifiberry card controls
+		//   * if EnableUSB is true, set all controls
+		if soundDeviceName == "dummy" || bool(config.EnableUSB) || strings.Contains(device, "hifiberry") {
+			for control := range controls {
+				// NOTE: When setting mute controls, use the negation (because an ALSA value of 0 means mute)
+				isInputSource := re.MatchString(control)
+				if strings.HasSuffix(control, "Capture Volume") {
+					setALSAControl(card, control, volumeString(config.CaptureVolume, config.CaptureMute))
+				} else if strings.HasSuffix(control, "Capture Switch") {
+					val = boolToInt(!config.CaptureMute)
+					setALSAControl(card, control, fmt.Sprintf("%d", val))
+				} else if strings.HasSuffix(control, "Playback Volume") {
+					// For HiFiBerry cards, always enable this "Analogue Playback Volume" option
+					if strings.Contains(device, "hifiberry") && control == "Analogue Playback Volume" {
+						setALSAControl(card, control, "100%")
+					} else if isInputSource {
+						setALSAControl(card, control, volumeString(config.MonitorVolume, config.MonitorMute))
+					} else {
+						setALSAControl(card, control, volumeString(config.PlaybackVolume, config.PlaybackMute))
+					}
+				} else if strings.HasSuffix(control, "Playback Switch") {
+					if isInputSource {
+						val = boolToInt(!config.MonitorMute)
+						setALSAControl(card, control, fmt.Sprintf("%d", val))
+					} else {
+						val = boolToInt(!config.PlaybackMute)
+						setALSAControl(card, control, fmt.Sprintf("%d", val))
+					}
+				}
+			}
 		}
-		cmd := exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='PGA Gain Left'", "--", fmt.Sprintf("%d", v))
-		if err := cmd.Run(); err != nil {
-			log.Error(err, "Unable to update 'PGA Gain Left'", "value", v)
-		} else {
-			log.Info("Updated 'PGA Gain Left'", "value", v)
+	}
+}
+
+// setALSAControl sets the value of an ALSA control
+func setALSAControl(card int, control, value string) {
+	cmd := exec.Command("/usr/bin/amixer", "-c", fmt.Sprintf("%d", card), "cset", fmt.Sprintf("name='%s'", control), "--", value)
+	_, err := cmd.Output()
+	if err != nil {
+		log.Error(err, "Unable to set ALSA control", "card", card, "control", control)
+	}
+	log.Info("Updated ALSA control", "card", card, "control", control, "value", value)
+}
+
+// getALSAControls returns a map of available capture/playback volume controls for a specific card
+func getALSAControls(card int) map[string]bool {
+	out, err := exec.Command("/usr/bin/amixer", "-c", fmt.Sprintf("%d", card), "controls").Output()
+	if err != nil {
+		log.Error(err, "Unable to get ALSA controls", "card", card)
+		return nil
+	}
+	return parseALSAControls(string(out))
+}
+
+// parseALSAControls parses all relevant volume controls of an ALSA card from `amixer controls`
+func parseALSAControls(output string) map[string]bool {
+	controls := map[string]bool{}
+	lines := strings.Split(output, "\n")
+	r := regexp.MustCompile(`numid=(\d+),iface=(\w+),name='(.*(Playback Volume|Playback Switch|Capture Volume|Capture Switch))'`)
+	for _, line := range lines {
+		matches := r.FindAllStringSubmatch(line, -1)
+		if len(matches) == 1 {
+			controls[matches[0][3]] = true
 		}
-		cmd = exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='PGA Gain Right'", "--", fmt.Sprintf("%d", v))
-		if err := cmd.Run(); err != nil {
-			log.Error(err, "Unable to update 'PGA Gain Right'", "value", v)
-		} else {
-			log.Info("Updated 'PGA Gain Right'", "value", v)
-		}
-	*/
-
-	// set capture volume
-	// note: 'PGA Gain Left' and 'PGA Gain Right' appear to map directly to 'ADC Capture Volume' left & right
-	v = int(config.CaptureVolume * 104 / 100)
-	cmd := exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='ADC Capture Volume'", "--", fmt.Sprintf("%d,%d", v, v))
-	if err := cmd.Run(); err != nil {
-		log.Error(err, "Unable to update 'ADC Capture Volume'", "value", v)
-	} else {
-		log.Info("Updated 'ADC Capture Volume'", "value", v)
 	}
-
-	// set playback boost
-	if config.PlaybackBoost {
-		v = 1
-	} else {
-		v = 0
-	}
-	cmd = exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Analogue Playback Volume'", "--", fmt.Sprintf("%d,%d", v, v))
-	if err := cmd.Run(); err != nil {
-		log.Error(err, "Unable to update 'Analogue Playback Volume'", "value", v)
-	} else {
-		log.Info("Updated 'Analogue Playback Volume'", "value", v)
-	}
-
-	// set playback volume
-	v = int(config.PlaybackVolume * 207 / 100)
-	cmd = exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Digital Playback Volume'", "--", fmt.Sprintf("%d,%d", v, v))
-	if err := cmd.Run(); err != nil {
-		log.Error(err, "Unable to update 'Digital Playback Volume' to %d: %s", "value", v)
-	} else {
-		log.Info("Updated 'Digital Playback Volume'", "value", v)
-	}
-}
-
-// updateALSASettingsAudioInjector is used to update the settings for a Audio Injector Stereo sound card
-func updateALSASettingsAudioInjector(config client.AgentConfig) {
-	var v int
-	amixerDevice := fmt.Sprintf("hw:%s", soundDeviceName)
-
-	// enable built in mic with boost, if set
-	if config.CaptureBoost {
-		v = 1
-	} else {
-		v = 0
-	}
-	cmd := exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Mic Boost Volume'", "--", fmt.Sprintf("%d", v))
-	if err := cmd.Run(); err != nil {
-		log.Error(err, "Unable to update 'Mic Boost Volume'", "value", v)
-	} else {
-		log.Info("Updated 'Mic Boost Volume'", "value", v)
-	}
-	cmd = exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Input Mux'", "--", fmt.Sprintf("%d", v))
-	if err := cmd.Run(); err != nil {
-		log.Error(err, "Unable to update 'Input Mux'", "value", v)
-	} else {
-		log.Info("Updated 'Input Mux'", "value", v)
-	}
-
-	// set capture volume
-	v = int(config.CaptureVolume * 31 / 100)
-	cmd = exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Capture Volume'", "--", fmt.Sprintf("%d", v))
-	if err := cmd.Run(); err != nil {
-		log.Error(err, "Unable to update 'Capture Volume'", "value", v)
-	} else {
-		log.Info("Updated 'Capture Volume'", "value", v)
-	}
-
-	// set playback volume
-	v = int(config.PlaybackVolume * 127 / 100)
-	cmd = exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Master Playback Volume'", "--", fmt.Sprintf("%d,%d", v, v))
-	if err := cmd.Run(); err != nil {
-		log.Error(err, "Unable to update 'Master Playback Volume' to %d: %s", "value", v)
-	} else {
-		log.Info("Updated 'Master Playback Volume'", "value", v)
-	}
-}
-
-// updateALSASettingsUSBAudioDevice is used to update the settings for a USB sound card
-func updateALSASettingsUSBAudioDevice(config client.AgentConfig) {
-	var v int
-	amixerDevice := fmt.Sprintf("hw:%s", soundDeviceName)
-
-	// set capture volume
-	v = int(config.CaptureVolume * 35 / 100)
-	cmd := exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Mic Capture Volume'", "--", fmt.Sprintf("%d", v))
-	if err := cmd.Run(); err != nil {
-		log.Error(err, "Unable to update 'Mic Capture Volume'", "value", v)
-	} else {
-		log.Info("Updated 'Mic Capture Volume'", "value", v)
-	}
-
-	// set playback volume
-	v = int(config.PlaybackVolume * 37 / 100)
-	cmd = exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Speaker Playback Volume'", "--", fmt.Sprintf("%d,%d", v, v))
-	if err := cmd.Run(); err != nil {
-		log.Error(err, "Unable to update 'Speaker Playback Volume' to %d: %s", "value", v)
-	} else {
-		log.Info("Updated 'Speaker Playback Volume'", "value", v)
-	}
-}
-
-// updateALSASettingsUSBPnPSoundDevice is used to update the settings for a USB sound card
-func updateALSASettingsUSBPnPSoundDevice(config client.AgentConfig) {
-	var v int
-	amixerDevice := fmt.Sprintf("hw:%s", soundDeviceName)
-
-	// set capture volume
-	v = int(config.CaptureVolume * 16 / 100)
-	cmd := exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Mic Capture Volume'", "--", fmt.Sprintf("%d", v))
-	if err := cmd.Run(); err != nil {
-		log.Error(err, "Unable to update 'Mic Capture Volume'", "value", v)
-	} else {
-		log.Info("Updated 'Mic Capture Volume'", "value", v)
-	}
-
-	// set playback volume
-	v = int(config.PlaybackVolume * 151 / 100)
-	cmd = exec.Command("/usr/bin/amixer", "-D", amixerDevice, "cset", "name='Speaker Playback Volume'", "--", fmt.Sprintf("%d,%d", v, v))
-	if err := cmd.Run(); err != nil {
-		log.Error(err, "Unable to update 'Speaker Playback Volume' to %d: %s", "value", v)
-	} else {
-		log.Info("Updated 'Speaker Playback Volume'", "value", v)
-	}
+	return controls
 }
 
 // updateAvahiServiceConfig generates a new /etc/avahi/services/jacktrip-agent.service file

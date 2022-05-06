@@ -48,12 +48,14 @@ const (
 )
 
 // updateServiceConfigs is used to update config for managed systemd services
-func updateServiceConfigs(config client.AgentConfig, remoteName string, isServer bool) {
+func updateServiceConfigs(config client.AgentConfig, remoteName string) {
 
 	// assume auto queue unless > 0
 	jackTripExtraOpts := "-q auto"
 	if config.QueueBuffer > 0 {
 		jackTripExtraOpts = fmt.Sprintf("-q %d", config.QueueBuffer)
+	} else if config.QueueBuffer < 0 {
+		jackTripExtraOpts = fmt.Sprintf("-q %d --bufstrategy 3", (config.QueueBuffer * -1))
 	}
 
 	// create config opts from templates
@@ -61,7 +63,10 @@ func updateServiceConfigs(config client.AgentConfig, remoteName string, isServer
 
 	updateJamulusIni(config, remoteName)
 
-	jackConfig = fmt.Sprintf(JackDeviceConfigTemplate, soundDeviceName, config.SampleRate, config.Period)
+	jackConfig = fmt.Sprintf(JackDeviceConfigTemplate, "alsa -d hw:"+soundDeviceName, config.SampleRate, config.Period)
+	if soundDeviceName == "dummy" {
+		jackConfig = fmt.Sprintf(JackDeviceConfigTemplate, soundDeviceName, config.SampleRate, config.Period)
+	}
 
 	// configure limiter
 	if config.Limiter {
@@ -177,8 +182,49 @@ func updateJamulusIni(config client.AgentConfig, remoteName string) {
 	writer.Flush()
 }
 
+// StartZitaService starts a zita service
+func StartZitaService(serviceName string) error {
+	conn, err := dbus.New()
+	if err != nil {
+		log.Error(err, "Failed to connect to dbus")
+	}
+	defer conn.Close()
+
+	err = startService(conn, serviceName)
+	if err != nil {
+		log.Error(err, "Unable to start service", "name", serviceName)
+	}
+	return err
+}
+
+// StopZitaService stops a running zita service
+func StopZitaService(serviceName string) error {
+	conn, err := dbus.New()
+	if err != nil {
+		log.Error(err, "Failed to connect to dbus")
+		return err
+	}
+	defer conn.Close()
+
+	// stop any managed services that are active
+	units, err := conn.ListUnitsByNames([]string{serviceName})
+	if err != nil {
+		log.Error(err, "Failed to get status of managed services")
+		return err
+	}
+
+	for _, u := range units {
+		err = stopService(conn, u)
+		if err != nil {
+			log.Error(err, "Unable to stop service")
+			return err
+		}
+	}
+	return nil
+}
+
 // restartAllServices is used to restart all of the managed systemd services
-func restartAllServices(config client.AgentConfig, isServer bool) {
+func restartAllServices(config client.AgentConfig) {
 	// create dbus connection to manage systemd units
 	conn, err := dbus.New()
 	if err != nil {
@@ -253,6 +299,7 @@ func stopService(conn *dbus.Conn, u dbus.UnitStatus) error {
 		return fmt.Errorf("failed to stop %s: job status=%s", u.Name, jobStatus)
 	}
 
+	log.Info("Finished stopping managed service", "name", u.Name)
 	return nil
 }
 
@@ -273,4 +320,16 @@ func startService(conn *dbus.Conn, name string) error {
 	}
 	log.Info("Finished starting managed service", "name", name)
 	return nil
+}
+
+// killService is used to kill a managed systemd service
+func killService(name string) {
+	conn, err := dbus.New()
+	if err != nil {
+		log.Error(err, "Failed to connect to dbus")
+		return
+	}
+	defer conn.Close()
+	log.Info("Killing managed service", "name", name)
+	conn.KillUnit(name, 9)
 }
