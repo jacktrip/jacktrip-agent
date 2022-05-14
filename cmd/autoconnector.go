@@ -278,7 +278,7 @@ func (ac *AutoConnector) connect(portID jack.PortId) error {
 	ac.ClientLock.Lock()
 	defer ac.ClientLock.Unlock()
 	if ac.JackClient == nil {
-		err := waitForDaemon()
+		err := WaitForJackd()
 		if err != nil {
 			return err
 		}
@@ -318,7 +318,7 @@ func (ac *AutoConnector) TeardownClient() {
 func (ac *AutoConnector) SetupClient() {
 	ac.ClientLock.Lock()
 	defer ac.ClientLock.Unlock()
-	err := waitForDaemon()
+	err := WaitForJackd()
 	if err != nil {
 		panic(err)
 	}
@@ -340,6 +340,7 @@ func (ac *AutoConnector) Run(ctx context.Context, wg *sync.WaitGroup) {
 		select {
 		case <-ctx.Done():
 			log.Info("Stopping autoconnector")
+			ac.TeardownClient()
 			return
 		case portID, ok := <-ac.RegistrationChannel:
 			if !ok {
@@ -356,8 +357,8 @@ func (ac *AutoConnector) Run(ctx context.Context, wg *sync.WaitGroup) {
 	}
 }
 
-// jack_wait reimplementation
-func waitForDaemon() error {
+// WaitForJackd is a jack_wait reimplementation
+func WaitForJackd() error {
 	err := RetryWithBackoff(func() error {
 		_, err := InitJackClient("", nil, nil, nil, nil, true)
 		return err
