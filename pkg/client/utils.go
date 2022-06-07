@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package client
 
 import (
 	"fmt"
@@ -60,24 +60,24 @@ func RetryWithBackoff(run func() error) error {
 	return nil
 }
 
-// max returns the maximum of two integers
-func max(a, b int) int {
+// Max returns the maximum of two integers
+func Max(a, b int) int {
 	if a < b {
 		return b
 	}
 	return a
 }
 
-// boolToInt converts a boolean to an integer
-func boolToInt(b types.BitBool) int {
+// BoolToInt converts a boolean to an integer
+func BoolToInt(b types.BitBool) int {
 	if b {
 		return 1
 	}
 	return 0
 }
 
-// volumeString returns a percentage string for volume controls
-func volumeString(vol int, mute types.BitBool) string {
+// VolumeString returns a percentage string for volume controls
+func VolumeString(vol int, mute types.BitBool) string {
 	if mute {
 		return "0%"
 	}

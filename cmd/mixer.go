@@ -359,7 +359,7 @@ func getSampleRateToChannelMap(sentences []string, mode ZitaMode) map[int]int {
 					sampleRates := parseSampleRates(currSentence)
 					// parse the interface's channels
 					r := regexp.MustCompile(`Channels: (\d)`)
-					for ii := j - 1; ii >= max(0, j-5); ii-- {
+					for ii := j - 1; ii >= client.Max(0, j-5); ii-- {
 						currSentence := sentences[ii]
 						subMatch := r.FindStringSubmatch(currSentence)
 						if len(subMatch) > 1 {

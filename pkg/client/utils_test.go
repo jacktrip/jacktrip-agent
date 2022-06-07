@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package client
 
 import (
 	"testing"
@@ -24,13 +24,13 @@ import (
 func TestMax(t *testing.T) {
 	assert := assert.New(t)
 
-	assert.Equal(1, max(1, 1))
-	assert.Equal(3, max(1, 3))
-	assert.Equal(3, max(3, 1))
-	assert.Equal(5, max(5, 2))
-	assert.Equal(5, max(2, 5))
-	assert.Equal(1, max(0, 1))
-	assert.Equal(1, max(1, 0))
+	assert.Equal(1, Max(1, 1))
+	assert.Equal(3, Max(1, 3))
+	assert.Equal(3, Max(3, 1))
+	assert.Equal(5, Max(5, 2))
+	assert.Equal(5, Max(2, 5))
+	assert.Equal(1, Max(0, 1))
+	assert.Equal(1, Max(1, 0))
 }
 
 func TestBoolToInt(t *testing.T) {
@@ -38,22 +38,22 @@ func TestBoolToInt(t *testing.T) {
 
 	// explicitly check types.BitBool input
 	yes := types.BitBool(true)
-	assert.Equal(1, boolToInt(yes))
+	assert.Equal(1, BoolToInt(yes))
 	no := types.BitBool(false)
-	assert.Equal(0, boolToInt(no))
+	assert.Equal(0, BoolToInt(no))
 	// explicitly check bool input
-	assert.Equal(1, boolToInt(true))
-	assert.Equal(0, boolToInt(false))
+	assert.Equal(1, BoolToInt(true))
+	assert.Equal(0, BoolToInt(false))
 }
 
 func TestVolumeString(t *testing.T) {
 	assert := assert.New(t)
 
 	yes := types.BitBool(true)
-	assert.Equal("0%", volumeString(10, yes))
-	assert.Equal("0%", volumeString(0, yes))
+	assert.Equal("0%", VolumeString(10, yes))
+	assert.Equal("0%", VolumeString(0, yes))
 
 	no := types.BitBool(false)
-	assert.Equal("30%", volumeString(30, no))
-	assert.Equal("100%", volumeString(100, no))
+	assert.Equal("30%", VolumeString(30, no))
+	assert.Equal("100%", VolumeString(100, no))
 }
