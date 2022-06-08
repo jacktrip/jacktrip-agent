@@ -66,7 +66,7 @@ var ac *AutoConnector
 var soundDeviceName = ""
 var soundDeviceType = ""
 var lastDeviceStatus = "starting"
-var currentDeviceConfig client.AgentConfig
+var currentDeviceConfig client.DeviceAgentConfig
 
 // runOnDevice is used to run jacktrip-agent on a raspberry pi device
 func runOnDevice(apiOrigin string) {
@@ -126,7 +126,7 @@ func runOnDevice(apiOrigin string) {
 
 	// start sending heartbeats and updating agent configs
 	wsm := WebSocketManager{
-		ConfigChannel:    make(chan client.AgentConfig, 100),
+		ConfigChannel:    make(chan client.DeviceAgentConfig, 100),
 		HeartbeatChannel: make(chan interface{}, 100),
 		APIOrigin:        apiOrigin,
 		Credentials:      credentials,
@@ -185,10 +185,6 @@ func deviceConfigUpdateHandler(ctx context.Context, wg *sync.WaitGroup, beat *cl
 			log.Info("Stopping deviceConfigUpdateHandler")
 			return
 		case newDeviceConfig := <-wsm.ConfigChannel:
-			// just copy over parameters that we want to silently ignore
-			currentDeviceConfig.Broadcast = newDeviceConfig.Broadcast
-			currentDeviceConfig.ExpiresAt = newDeviceConfig.ExpiresAt
-
 			if firstConfig || newDeviceConfig != currentDeviceConfig {
 				// remove secrets before logging
 				sanitizedDeviceConfig := newDeviceConfig
@@ -273,7 +269,7 @@ func sendDeviceHeartbeats(ctx context.Context, wg *sync.WaitGroup, beat *client.
 }
 
 // handleDeviceUpdate handles updates to device configuratiosn
-func handleDeviceUpdate(beat *client.DeviceHeartbeat, credentials client.AgentCredentials, config client.AgentConfig, dmm *DeviceMixingManager, force bool) {
+func handleDeviceUpdate(beat *client.DeviceHeartbeat, credentials client.AgentCredentials, config client.DeviceAgentConfig, dmm *DeviceMixingManager, force bool) {
 	// update current config sooner, so that other goroutines will have the most up-to-date version
 	lastDeviceConfig := currentDeviceConfig
 	currentDeviceConfig = config
@@ -359,7 +355,7 @@ func getSoundDeviceType() string {
 }
 
 // updateALSASettings is used to update the settings for an ALSA sound card
-func updateALSASettings(config client.AgentConfig) {
+func updateALSASettings(config client.DeviceAgentConfig) {
 	var val int
 	re := regexp.MustCompile(ALSAInputSourceToken)
 	deviceCardMap := getDeviceToNumMappings()

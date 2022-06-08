@@ -83,6 +83,22 @@ type ALSAConfig struct {
 	MonitorVolume int `json:"monitorVolume" db:"monitor_volume"`
 }
 
+// DeviceAgentConfig defines active configuration for a device
+type DeviceAgentConfig struct {
+	DeviceConfig
+	ALSAConfig
+	ServerConfig
+
+	// frames per period
+	Period int `json:"period" db:"period"`
+
+	// size of jitter queue buffer
+	QueueBuffer int `json:"queueBuffer" db:"queue_buffer"`
+
+	// authorization token used by jacktrip-agent to access studio servers
+	AuthToken string `json:"authToken" db:"auth_token"`
+}
+
 // AgentConfig defines active configuration for an agent
 type AgentConfig struct {
 	DeviceConfig

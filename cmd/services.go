@@ -48,7 +48,7 @@ const (
 )
 
 // updateServiceConfigs is used to update config for managed systemd services
-func updateServiceConfigs(config client.AgentConfig, remoteName string) {
+func updateServiceConfigs(config client.DeviceAgentConfig, remoteName string) {
 
 	// assume auto queue unless > 0
 	jackTripExtraOpts := "-q auto"
@@ -131,7 +131,7 @@ func updateServiceConfigs(config client.AgentConfig, remoteName string) {
 }
 
 // updateJamulusIni writes a new /tmp/jamulus.ini file using template at /var/lib/jacktrip/jamulus.ini
-func updateJamulusIni(config client.AgentConfig, remoteName string) {
+func updateJamulusIni(config client.DeviceAgentConfig, remoteName string) {
 	srcFileName := "/var/lib/jacktrip/jamulus.ini"
 	srcFile, err := os.Open(srcFileName)
 	if err != nil {
@@ -224,7 +224,7 @@ func StopZitaService(serviceName string) error {
 }
 
 // restartAllServices is used to restart all of the managed systemd services
-func restartAllServices(config client.AgentConfig) {
+func restartAllServices(config client.DeviceAgentConfig) {
 	// create dbus connection to manage systemd units
 	conn, err := dbus.New()
 	if err != nil {

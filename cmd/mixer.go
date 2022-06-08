@@ -106,7 +106,7 @@ func (dmm *DeviceMixingManager) Reset() {
 }
 
 // SynchronizeConnections synchronizes all Zita <-> Jack port connections
-func (dmm *DeviceMixingManager) SynchronizeConnections(config client.AgentConfig) {
+func (dmm *DeviceMixingManager) SynchronizeConnections(config client.DeviceAgentConfig) {
 	// Reset should be called under the following conditions:
 	// - multi-USB mode is disabled and the detected soundcard is not dummy (indicative of analog bridge)
 	// - or device is not connected to server
@@ -152,7 +152,7 @@ func (dmm *DeviceMixingManager) SynchronizeConnections(config client.AgentConfig
 	}
 }
 
-func (dmm *DeviceMixingManager) connectZita(mode ZitaMode, device string, config client.AgentConfig) error {
+func (dmm *DeviceMixingManager) connectZita(mode ZitaMode, device string, config client.DeviceAgentConfig) error {
 	// check if the device has support for the server sampleRate
 	stream0, ok := dmm.DeviceStream0Mapping[device]
 	if !ok {
@@ -189,7 +189,7 @@ func (dmm *DeviceMixingManager) connectZita(mode ZitaMode, device string, config
 }
 
 // addInactiveDevice starts Zita processes for each new, active device detected
-func (dmm *DeviceMixingManager) addActiveDevices(config client.AgentConfig, newDevices []string, mode ZitaMode) {
+func (dmm *DeviceMixingManager) addActiveDevices(config client.DeviceAgentConfig, newDevices []string, mode ZitaMode) {
 	currentDevices := dmm.CurrentPlaybackDevices
 	if mode == ZitaCapture {
 		currentDevices = dmm.CurrentCaptureDevices
