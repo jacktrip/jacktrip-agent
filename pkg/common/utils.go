@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package client
+package common
 
 import (
 	"fmt"
@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx/types"
+	"github.com/xthexder/go-jack"
 )
 
 const (
@@ -82,4 +83,60 @@ func VolumeString(vol int, mute types.BitBool) string {
 		return "0%"
 	}
 	return fmt.Sprintf("%d%%", vol)
+}
+
+// InitJackClient creates a new JACK client
+func InitJackClient(name string, prc jack.PortRegistrationCallback, sc jack.ShutdownCallback, pc jack.ProcessCallback, preActivationMethod func(client *jack.Client), close bool) (*jack.Client, error) {
+	client, code := jack.ClientOpen(name, jack.NoStartServer)
+	if client == nil || code != 0 {
+		err := jack.StrError(code)
+		return nil, err
+	}
+	// Set port registration handler
+	if prc != nil {
+		if code := client.SetPortRegistrationCallback(prc); code != 0 {
+			err := jack.StrError(code)
+			return nil, err
+		}
+	}
+	// Set process handler
+	if pc != nil {
+		if code := client.SetProcessCallback(pc); code != 0 {
+			err := jack.StrError(code)
+			return nil, err
+		}
+	}
+	// Set shutdown handler
+	if sc != nil {
+		client.OnShutdown(sc)
+	}
+	// Call any special routine prior to (like establishing ports)
+	if preActivationMethod != nil {
+		preActivationMethod(client)
+	}
+	if code := client.Activate(); code != 0 {
+		err := jack.StrError(code)
+		return nil, err
+	}
+	// Automatically close client upon creation - used for connection checking
+	if close {
+		if code := client.Close(); code != 0 {
+			err := jack.StrError(code)
+			return nil, err
+		}
+		return nil, nil
+	}
+	return client, nil
+}
+
+// WaitForJackd is a jack_wait reimplementation
+func WaitForJackd() error {
+	err := RetryWithBackoff(func() error {
+		_, err := InitJackClient("", nil, nil, nil, nil, true)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	return nil
 }

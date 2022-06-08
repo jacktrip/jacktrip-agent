@@ -31,6 +31,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/jacktrip/jacktrip-agent/pkg/client"
+	"github.com/jacktrip/jacktrip-agent/pkg/common"
 )
 
 const (
@@ -62,7 +63,7 @@ const (
 	ALSAInputSourceToken = `Mic|ADC`
 )
 
-var ac *client.AutoConnector
+var ac *AutoConnector
 var soundDeviceName = ""
 var soundDeviceType = ""
 var lastDeviceStatus = "starting"
@@ -139,7 +140,7 @@ func runOnDevice(apiOrigin string) {
 	go wsm.recvConfigHandler(ctx, &wg)
 
 	// Start JACK autoconnector
-	ac = client.NewAutoConnector()
+	ac = NewAutoConnector()
 	wg.Add(1)
 	go ac.Run(ctx, &wg)
 
@@ -374,25 +375,25 @@ func updateALSASettings(config client.AgentConfig) {
 				// NOTE: When setting mute controls, use the negation (because an ALSA value of 0 means mute)
 				isInputSource := re.MatchString(control)
 				if strings.HasSuffix(control, "Capture Volume") {
-					setALSAControl(card, control, client.VolumeString(config.CaptureVolume, config.CaptureMute))
+					setALSAControl(card, control, common.VolumeString(config.CaptureVolume, config.CaptureMute))
 				} else if strings.HasSuffix(control, "Capture Switch") {
-					val = client.BoolToInt(!config.CaptureMute)
+					val = common.BoolToInt(!config.CaptureMute)
 					setALSAControl(card, control, fmt.Sprintf("%d", val))
 				} else if strings.HasSuffix(control, "Playback Volume") {
 					// For HiFiBerry cards, always enable this "Analogue Playback Volume" option
 					if strings.Contains(device, "hifiberry") && control == "Analogue Playback Volume" {
 						setALSAControl(card, control, "100%")
 					} else if isInputSource {
-						setALSAControl(card, control, client.VolumeString(config.MonitorVolume, config.MonitorMute))
+						setALSAControl(card, control, common.VolumeString(config.MonitorVolume, config.MonitorMute))
 					} else {
-						setALSAControl(card, control, client.VolumeString(config.PlaybackVolume, config.PlaybackMute))
+						setALSAControl(card, control, common.VolumeString(config.PlaybackVolume, config.PlaybackMute))
 					}
 				} else if strings.HasSuffix(control, "Playback Switch") {
 					if isInputSource {
-						val = client.BoolToInt(!config.MonitorMute)
+						val = common.BoolToInt(!config.MonitorMute)
 						setALSAControl(card, control, fmt.Sprintf("%d", val))
 					} else {
-						val = client.BoolToInt(!config.PlaybackMute)
+						val = common.BoolToInt(!config.PlaybackMute)
 						setALSAControl(card, control, fmt.Sprintf("%d", val))
 					}
 				}
