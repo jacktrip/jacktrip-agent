@@ -95,27 +95,11 @@ type DeviceAgentConfig struct {
 	// size of jitter queue buffer
 	QueueBuffer int `json:"queueBuffer" db:"queue_buffer"`
 
-	// authorization token used by jacktrip-agent to access studio servers
-	AuthToken string `json:"authToken" db:"auth_token"`
-}
-
-// AgentConfig defines active configuration for an agent
-type AgentConfig struct {
-	DeviceConfig
-	ALSAConfig
-	ServerConfig
-
-	// frames per period
-	Period int `json:"period" db:"period"`
-
-	// size of jitter queue buffer
-	QueueBuffer int `json:"queueBuffer" db:"queue_buffer"`
+	// strategy to use for the network jitter buffer
+	BufferStrategy int `json:"bufferStrategy" db:"buffer_strategy"`
 
 	// authorization token used by jacktrip-agent to access studio servers
 	AuthToken string `json:"authToken" db:"auth_token"`
-
-	// timestamp when the server will automatically be paused
-	ExpiresAt time.Time `json:"expiresAt" db:"expires_at"`
 }
 
 // PingStats defines a ping statistics to an audio server
