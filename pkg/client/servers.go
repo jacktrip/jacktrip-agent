@@ -51,6 +51,9 @@ type ServerConfig struct {
 	// type of server
 	Type ServerType `json:"type" db:"type"`
 
+	// Descriptive name
+	Name string `json:"name" db:"name"`
+
 	// hostname of server
 	Host string `json:"serverHost" db:"host"`
 
@@ -59,6 +62,9 @@ type ServerConfig struct {
 
 	// sample rate frequency (48000 or 96000)
 	SampleRate int `json:"sampleRate" db:"sample_rate"`
+
+	// true if server is publically accessible
+	Public types.BitBool `json:"public" db:"public"`
 
 	// DEPRECATED: should always be true
 	Stereo types.BitBool `json:"stereo" db:"stereo"`

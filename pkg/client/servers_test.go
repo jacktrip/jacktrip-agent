@@ -50,14 +50,16 @@ func TestServerAgentConfig(t *testing.T) {
 	var target ServerAgentConfig
 
 	// Parse JSON into ServerAgentConfig struct
-	raw = `{"type": "JackTrip+Jamulus", "mixBranch": "main", "mixCode": "echo hi", "serverHost": "a.b.com", "serverPort": 8000, "sampleRate": 96000, "broadcast": 1, "enabled": true}`
+	raw = `{"type": "JackTrip+Jamulus", "name": "Test Server", "mixBranch": "main", "mixCode": "echo hi", "serverHost": "a.b.com", "serverPort": 8000, "sampleRate": 96000, "broadcast": 1, "public": true, "enabled": true}`
 	target = ServerAgentConfig{}
 	json.Unmarshal([]byte(raw), &target)
 	assert.Equal(JackTripJamulus, target.Type)
+	assert.Equal("Test Server", target.Name)
 	assert.Equal("echo hi", target.MixCode)
 	assert.Equal("a.b.com", target.Host)
 	assert.Equal(8000, target.Port)
 	assert.Equal(96000, target.SampleRate)
+	assert.Equal(true, bool(target.Public))
 	assert.Equal(true, bool(target.Enabled))
 	assert.Equal(Public, target.Broadcast)
 	assert.Equal("main", target.MixBranch)
