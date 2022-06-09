@@ -51,14 +51,8 @@ type ServerConfig struct {
 	// type of server
 	Type ServerType `json:"type" db:"type"`
 
-	// Branch of jacktrip/jacktrip-sc repository to use for mixing
-	MixBranch string `json:"mixBranch" db:"mix_branch"`
-
-	// SuperCollider (sclang) source code to run for mixing audio
-	MixCode string `json:"mixCode" db:"mix_code"`
-
-	// max number of musicians allowed in server
-	MaxMusicians int `json:"maxMusicians" db:"max_musicians"`
+	// Descriptive name
+	Name string `json:"name" db:"name"`
 
 	// hostname of server
 	Host string `json:"serverHost" db:"host"`
@@ -69,12 +63,13 @@ type ServerConfig struct {
 	// sample rate frequency (48000 or 96000)
 	SampleRate int `json:"sampleRate" db:"sample_rate"`
 
-	// true if stereo, false if mono
-	// this field will be replaced by deviceConfig's input and output channels
-	// don't delete it for backward compatibility
+	// true if server is publically accessible
+	Public types.BitBool `json:"public" db:"public"`
+
+	// DEPRECATED: should always be true
 	Stereo types.BitBool `json:"stereo" db:"stereo"`
 
-	// true if client's audio should loop back to them
+	// DEPRECATED: should always be false
 	LoopBack types.BitBool `json:"loopback" db:"loopback"`
 
 	// true if enabled
@@ -83,8 +78,6 @@ type ServerConfig struct {
 
 // ServerAgentConfig defines active configuration for a server
 type ServerAgentConfig struct {
-	DeviceConfig
-	ALSAConfig
 	ServerConfig
 
 	// frames per period
@@ -93,14 +86,23 @@ type ServerAgentConfig struct {
 	// size of jitter queue buffer
 	QueueBuffer int `json:"queueBuffer" db:"queue_buffer"`
 
-	// authorization token used by jacktrip-agent to access studio servers
-	AuthToken string `json:"authToken" db:"auth_token"`
+	// strategy to use for the network jitter buffer
+	BufferStrategy int `json:"bufferStrategy" db:"buffer_strategy"`
 
 	// broadcast visibility of the audio server
 	Broadcast BroadcastVisibility `json:"broadcast" db:"broadcast"`
 
 	// timestamp when the server will automatically be paused
 	ExpiresAt time.Time `json:"expiresAt" db:"expires_at"`
+
+	// Branch of jacktrip/jacktrip-sc repository to use for mixing
+	MixBranch string `json:"mixBranch" db:"mix_branch"`
+
+	// SuperCollider (sclang) source code to run for mixing audio
+	MixCode string `json:"mixCode" db:"mix_code"`
+
+	// max number of musicians allowed in server
+	MaxMusicians int `json:"maxMusicians" db:"max_musicians"`
 }
 
 // ServerHeartbeat is used to send heartbeat messages from servers / studios

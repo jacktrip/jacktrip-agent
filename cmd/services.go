@@ -51,11 +51,11 @@ const (
 func updateServiceConfigs(config client.DeviceAgentConfig, remoteName string) {
 
 	// assume auto queue unless > 0
-	jackTripExtraOpts := "-q auto"
+	jackTripExtraOpts := fmt.Sprintf("--bufstrategy %d", config.BufferStrategy)
 	if config.QueueBuffer > 0 {
-		jackTripExtraOpts = fmt.Sprintf("-q %d", config.QueueBuffer)
-	} else if config.QueueBuffer < 0 {
-		jackTripExtraOpts = fmt.Sprintf("-q %d --bufstrategy 3", (config.QueueBuffer * -1))
+		jackTripExtraOpts = fmt.Sprintf("%s -q %d", jackTripExtraOpts, config.QueueBuffer)
+	} else {
+		jackTripExtraOpts = fmt.Sprintf("%s -q auto", jackTripExtraOpts)
 	}
 
 	// create config opts from templates
@@ -88,16 +88,11 @@ func updateServiceConfigs(config client.DeviceAgentConfig, remoteName string) {
 
 	receiveChannels := config.OutputChannels // audio signals from the audio server to the user, hence receiveChannels
 	sendChannels := config.InputChannels     // audio signals to the audio server from user's input, hence sendChannels
-	if config.Stereo {
-		if receiveChannels == 0 {
-			receiveChannels = 2 // default output channels is stereo
-		}
-		if sendChannels == 0 {
-			sendChannels = 1 // default input channels is mono
-		}
-	} else {
-		receiveChannels = 1
-		sendChannels = 1
+	if receiveChannels == 0 {
+		receiveChannels = 2 // default output channels is stereo
+	}
+	if sendChannels == 0 {
+		sendChannels = 1 // default input channels is mono
 	}
 
 	jackTripConfig = fmt.Sprintf(JackTripDeviceConfigTemplate, receiveChannels, sendChannels, config.Host, config.Port, config.DevicePort, remoteName, strings.TrimSpace(jackTripExtraOpts))

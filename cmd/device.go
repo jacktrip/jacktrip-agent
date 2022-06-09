@@ -361,7 +361,7 @@ func updateALSASettings(config client.DeviceAgentConfig) {
 	deviceCardMap := getDeviceToNumMappings()
 	for device, card := range deviceCardMap {
 		controls := getALSAControls(card)
-		// For digital bridges, set all control from AgentConfig
+		// For digital bridges, set all control from DeviceAgentConfig
 		// For analog bridges:
 		//   * if EnableUSB is false, only set the hifiberry card controls
 		//   * if EnableUSB is true, set all controls
