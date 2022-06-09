@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jacktrip/jacktrip-agent/pkg/common"
 	"github.com/xthexder/go-jack"
 )
 
@@ -224,66 +225,18 @@ func (ac *AutoConnector) onShutdown() {
 	ac.RegistrationChannel <- jack.PortId(0)
 }
 
-// InitJackClient creates a new JACK client
-func InitJackClient(name string, prc jack.PortRegistrationCallback, sc jack.ShutdownCallback, pc jack.ProcessCallback, preActivationMethod func(client *jack.Client), close bool) (*jack.Client, error) {
-	client, code := jack.ClientOpen(name, jack.NoStartServer)
-	if client == nil || code != 0 {
-		err := jack.StrError(code)
-		log.Error(err, "Failed to create client")
-		return nil, err
-	}
-	// Set port registration handler
-	if prc != nil {
-		if code := client.SetPortRegistrationCallback(prc); code != 0 {
-			err := jack.StrError(code)
-			log.Error(jack.StrError(code), "Failed to set port registration callback")
-			return nil, err
-		}
-	}
-	// Set process handler
-	if pc != nil {
-		if code := client.SetProcessCallback(pc); code != 0 {
-			err := jack.StrError(code)
-			log.Error(jack.StrError(code), "Failed to set process callback")
-			return nil, err
-		}
-	}
-	// Set shutdown handler
-	if sc != nil {
-		client.OnShutdown(sc)
-	}
-	// Call any special routine prior to (like establishing ports)
-	if preActivationMethod != nil {
-		preActivationMethod(client)
-	}
-	if code := client.Activate(); code != 0 {
-		err := jack.StrError(code)
-		log.Error(err, "Failed to activate client")
-		return nil, err
-	}
-	// Automatically close client upon creation - used for connection checking
-	if close {
-		if code := client.Close(); code != 0 {
-			err := jack.StrError(code)
-			log.Error(err, "Failed to close client")
-			return nil, err
-		}
-		return nil, nil
-	}
-	return client, nil
-}
-
 // Helper function to connect JACK ports in a thread-safe manner
 func (ac *AutoConnector) connect(portID jack.PortId) error {
 	ac.ClientLock.Lock()
 	defer ac.ClientLock.Unlock()
 	if ac.JackClient == nil {
-		err := WaitForJackd()
-		if err != nil {
+		if err := common.WaitForJackd(); err != nil {
+			log.Error(err, "Unable to find JACK daemon")
 			return err
 		}
-		client, err := InitJackClient(ac.Name, ac.handlePortRegistration, ac.onShutdown, nil, nil, false)
+		client, err := common.InitJackClient(ac.Name, ac.handlePortRegistration, ac.onShutdown, nil, nil, false)
 		if err != nil {
+			log.Error(err, "Unable to initialize JACK client")
 			return err
 		}
 		ac.JackClient = client
@@ -318,12 +271,13 @@ func (ac *AutoConnector) TeardownClient() {
 func (ac *AutoConnector) SetupClient() {
 	ac.ClientLock.Lock()
 	defer ac.ClientLock.Unlock()
-	err := WaitForJackd()
-	if err != nil {
+	if err := common.WaitForJackd(); err != nil {
+		log.Error(err, "Unable to find JACK daemon")
 		panic(err)
 	}
-	client, err := InitJackClient(ac.Name, ac.handlePortRegistration, ac.onShutdown, nil, nil, false)
+	client, err := common.InitJackClient(ac.Name, ac.handlePortRegistration, ac.onShutdown, nil, nil, false)
 	if err != nil {
+		log.Error(err, "Unable to initialize JACK client")
 		panic(err)
 	}
 	ac.JackClient = client
@@ -347,7 +301,7 @@ func (ac *AutoConnector) Run(ctx context.Context, wg *sync.WaitGroup) {
 				log.Info("Registration channel is closed")
 				return
 			}
-			err := RetryWithBackoff(func() error {
+			err := common.RetryWithBackoff(func() error {
 				return ac.connect(portID)
 			})
 			if err != nil {
@@ -355,18 +309,4 @@ func (ac *AutoConnector) Run(ctx context.Context, wg *sync.WaitGroup) {
 			}
 		}
 	}
-}
-
-// WaitForJackd is a jack_wait reimplementation
-func WaitForJackd() error {
-	err := RetryWithBackoff(func() error {
-		_, err := InitJackClient("", nil, nil, nil, nil, true)
-		return err
-	})
-	if err != nil {
-		log.Error(err, "Unable to find JACK daemon")
-		return err
-	}
-	log.Info("Found running JACK daemon")
-	return nil
 }
