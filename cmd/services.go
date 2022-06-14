@@ -51,7 +51,11 @@ const (
 func updateServiceConfigs(config client.DeviceAgentConfig, remoteName string) {
 
 	// assume auto queue unless > 0
-	jackTripExtraOpts := fmt.Sprintf("--bufstrategy %d", config.BufferStrategy)
+	bufStrategy := config.BufferStrategy
+	if bufStrategy < 1 {
+		bufStrategy = 1
+	}
+	jackTripExtraOpts := fmt.Sprintf("--bufstrategy %d", bufStrategy)
 	if config.QueueBuffer > 0 {
 		jackTripExtraOpts = fmt.Sprintf("%s -q %d", jackTripExtraOpts, config.QueueBuffer)
 	} else {
