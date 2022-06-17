@@ -1,4 +1,4 @@
-// Copyright 2020-2021 JackTrip Labs, Inc.
+// Copyright 2020-2022 JackTrip Labs, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -86,20 +86,19 @@ func TestPingStats(t *testing.T) {
 	assert.Equal("2021-08-11 10:28:32.487013776 +0000 UTC", target.StatsUpdatedAt.String())
 }
 
-func TestAgentConfig(t *testing.T) {
+func TestDeviceAgentConfig(t *testing.T) {
 	assert := assert.New(t)
 	var raw string
-	var target AgentConfig
+	var target DeviceAgentConfig
 
-	// Parse JSON into AgentConfig struct
-	raw = `{"period": 3, "queueBuffer": 128, "devicePort": 8000, "reverb": 42, "limiter": true, "compressor": 0, "quality": 2, "captureBoost": true, "playbackBoost": 0, "captureVolume": 100, "playbackVolume": 0, "type": "JackTrip+Jamulus", "mixBranch": "main", "mixCode": "echo hi", "serverHost": "a.b.com", "serverPort": 8000, "sampleRate": 96000, "inputChannels": 2, "outputChannels": 2, "loopback": false, "enabled": true, "authToken": "foobar", "broadcast": 1, "expiresAt": "2020-04-09T13:00:00Z"}`
-	target = AgentConfig{}
+	// Parse JSON into DeviceAgentConfig struct
+	raw = `{"period": 3, "queueBuffer": 128, "devicePort": 8000, "reverb": 42, "limiter": true, "compressor": 0, "quality": 2, "captureBoost": true, "playbackBoost": 0, "captureVolume": 100, "playbackVolume": 0, "type": "JackTrip+Jamulus", "serverHost": "a.b.com", "serverPort": 8000, "sampleRate": 96000, "inputChannels": 2, "outputChannels": 2, "enabled": true, "authToken": "foobar", "broadcast": 1, "expiresAt": "2020-04-09T13:00:00Z"}`
+	target = DeviceAgentConfig{}
 	json.Unmarshal([]byte(raw), &target)
 	assert.Equal(3, target.Period)
 	assert.Equal(128, target.QueueBuffer)
 	assert.Equal(8000, target.DevicePort)
 	assert.Equal(42, target.Reverb)
-	assert.Equal(false, bool(target.EnableUSB))
 	assert.Equal(true, bool(target.Limiter))
 	assert.Equal(false, bool(target.Compressor))
 	assert.Equal(2, target.Quality)
@@ -108,18 +107,13 @@ func TestAgentConfig(t *testing.T) {
 	assert.Equal(100, target.CaptureVolume)
 	assert.Equal(0, target.PlaybackVolume)
 	assert.Equal(JackTripJamulus, target.Type)
-	assert.Equal("main", target.MixBranch)
-	assert.Equal("echo hi", target.MixCode)
 	assert.Equal("a.b.com", target.Host)
 	assert.Equal(8000, target.Port)
 	assert.Equal(96000, target.SampleRate)
 	assert.Equal(2, target.InputChannels)
 	assert.Equal(2, target.OutputChannels)
-	assert.Equal(false, bool(target.LoopBack))
 	assert.Equal(true, bool(target.Enabled))
 	assert.Equal("foobar", target.AuthToken)
-	assert.Equal(Public, target.Broadcast)
-	assert.Equal(int64(1586437200), target.ExpiresAt.Unix())
 }
 
 func TestAgentCredentials(t *testing.T) {

@@ -1,4 +1,4 @@
-// Copyright 2020-2021 JackTrip Labs, Inc.
+// Copyright 2020-2022 JackTrip Labs, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,19 +34,36 @@ func TestServerConfig(t *testing.T) {
 	var target ServerConfig
 
 	// Parse JSON into ServerConfig struct
-	raw = `{"type": "JackTrip+Jamulus", "mixBranch": "main", "mixCode": "echo hi", "serverHost": "a.b.com", "serverPort": 8000, "sampleRate": 96000, "stereo": true, "broadcast": 1, "loopback": false, "enabled": true}`
+	raw = `{"type": "JackTrip+Jamulus", "serverHost": "a.b.com", "serverPort": 8000, "sampleRate": 96000, "enabled": true}`
 	target = ServerConfig{}
 	json.Unmarshal([]byte(raw), &target)
 	assert.Equal(JackTripJamulus, target.Type)
-	assert.Equal("main", target.MixBranch)
+	assert.Equal("a.b.com", target.Host)
+	assert.Equal(8000, target.Port)
+	assert.Equal(96000, target.SampleRate)
+	assert.Equal(true, bool(target.Enabled))
+}
+
+func TestServerAgentConfig(t *testing.T) {
+	assert := assert.New(t)
+	var raw string
+	var target ServerAgentConfig
+
+	// Parse JSON into ServerAgentConfig struct
+	raw = `{"type": "JackTrip+Jamulus", "name": "Test Server", "mixBranch": "main", "mixCode": "echo hi", "serverHost": "a.b.com", "serverPort": 8000, "sampleRate": 96000, "broadcast": 1, "public": true, "enabled": true}`
+	target = ServerAgentConfig{}
+	json.Unmarshal([]byte(raw), &target)
+	assert.Equal(JackTripJamulus, target.Type)
+	assert.Equal("Test Server", target.Name)
 	assert.Equal("echo hi", target.MixCode)
 	assert.Equal("a.b.com", target.Host)
 	assert.Equal(8000, target.Port)
 	assert.Equal(96000, target.SampleRate)
-	assert.Equal(Public, target.Broadcast)
-	assert.Equal(true, bool(target.Stereo))
-	assert.Equal(false, bool(target.LoopBack))
+	assert.Equal(true, bool(target.Public))
 	assert.Equal(true, bool(target.Enabled))
+	assert.Equal(Public, target.Broadcast)
+	assert.Equal("main", target.MixBranch)
+	assert.Equal("echo hi", target.MixCode)
 }
 
 func TestServerHeartbeat(t *testing.T) {
