@@ -413,6 +413,217 @@ Capture:
 	result = getSampleRateToChannelMap(strings.Split(content, "\n"), zMode)
 	assert.Equal(1, len(result))
 	assert.Equal(2, result[44100])
+
+	content = `
+Burr-Brown from TI USB Audio CODEC at usb-0000:01:00.0-1.1, full speed : USB Audio
+
+Playback:
+  Status: Stop
+  Interface 1
+    Altset 1
+    Format: S16_LE
+    Channels: 2
+    Endpoint: 2 OUT (ADAPTIVE)
+    Rates: 32000, 44100, 48000
+    Bits: 16
+    Channel map: FL FR
+  Interface 1
+    Altset 2
+    Format: S16_LE
+    Channels: 1
+    Endpoint: 2 OUT (ADAPTIVE)
+    Rates: 32000, 44100, 48000
+    Bits: 16
+    Channel map: MONO
+  Interface 1
+    Altset 3
+    Format: S8
+    Channels: 2
+    Endpoint: 2 OUT (ADAPTIVE)
+    Rates: 32000, 44100, 48000
+    Bits: 8
+    Channel map: FL FR
+  Interface 1
+    Altset 4
+    Format: S8
+    Channels: 1
+    Endpoint: 2 OUT (ADAPTIVE)
+    Rates: 32000, 44100, 48000
+    Bits: 8
+    Channel map: MONO
+  Interface 1
+    Altset 5
+    Format: U8
+    Channels: 2
+    Endpoint: 2 OUT (ADAPTIVE)
+    Rates: 32000, 44100, 48000
+    Bits: 8
+    Channel map: FL FR
+  Interface 1
+    Altset 6
+    Format: U8
+    Channels: 1
+    Endpoint: 2 OUT (ADAPTIVE)
+    Rates: 32000, 44100, 48000
+    Bits: 8
+    Channel map: MONO
+
+Capture:
+  Status: Stop
+  Interface 2
+    Altset 1
+    Format: S16_LE
+    Channels: 2
+    Endpoint: 4 IN (ASYNC)
+    Rates: 48000
+    Bits: 16
+    Channel map: FL FR
+  Interface 2
+    Altset 2
+    Format: S16_LE
+    Channels: 1
+    Endpoint: 4 IN (ASYNC)
+    Rates: 48000
+    Bits: 16
+    Channel map: MONO
+  Interface 2
+    Altset 3
+    Format: S16_LE
+    Channels: 2
+    Endpoint: 4 IN (ASYNC)
+    Rates: 44100
+    Bits: 16
+    Channel map: FL FR
+  Interface 2
+    Altset 4
+    Format: S16_LE
+    Channels: 1
+    Endpoint: 4 IN (ASYNC)
+    Rates: 44100
+    Bits: 16
+    Channel map: MONO
+  Interface 2
+    Altset 5
+    Format: S16_LE
+    Channels: 2
+    Endpoint: 4 IN (ASYNC)
+    Rates: 32000
+    Bits: 16
+    Channel map: FL FR
+  Interface 2
+    Altset 6
+    Format: S16_LE
+    Channels: 1
+    Endpoint: 4 IN (ASYNC)
+    Rates: 32000
+    Bits: 16
+    Channel map: MONO
+  Interface 2
+    Altset 7
+    Format: S16_LE
+    Channels: 2
+    Endpoint: 4 IN (ASYNC)
+    Rates: 22050
+    Bits: 16
+    Channel map: FL FR
+  Interface 2
+    Altset 8
+    Format: S16_LE
+    Channels: 1
+    Endpoint: 4 IN (ASYNC)
+    Rates: 22050
+    Bits: 16
+    Channel map: MONO
+  Interface 2
+    Altset 9
+    Format: S16_LE
+    Channels: 2
+    Endpoint: 4 IN (ASYNC)
+    Rates: 16000
+    Bits: 16
+    Channel map: FL FR
+  Interface 2
+    Altset 10
+    Format: S16_LE
+    Channels: 1
+    Endpoint: 4 IN (ASYNC)
+    Rates: 16000
+    Bits: 16
+    Channel map: MONO
+  Interface 2
+    Altset 11
+    Format: S8
+    Channels: 2
+    Endpoint: 4 IN (ASYNC)
+    Rates: 16000
+    Bits: 8
+    Channel map: FL FR
+  Interface 2
+    Altset 12
+    Format: S8
+    Channels: 1
+    Endpoint: 4 IN (ASYNC)
+    Rates: 16000
+    Bits: 8
+    Channel map: MONO
+  Interface 2
+    Altset 13
+    Format: S8
+    Channels: 2
+    Endpoint: 4 IN (ASYNC)
+    Rates: 8000
+    Bits: 8
+    Channel map: FL FR
+  Interface 2
+    Altset 14
+    Format: S8
+    Channels: 1
+    Endpoint: 4 IN (ASYNC)
+    Rates: 8000
+    Bits: 8
+    Channel map: MONO
+  Interface 2
+    Altset 15
+    Format: S16_LE
+    Channels: 2
+    Endpoint: 4 IN (SYNC)
+    Rates: 11025
+    Bits: 16
+    Channel map: FL FR
+  Interface 2
+    Altset 16
+    Format: S16_LE
+    Channels: 1
+    Endpoint: 4 IN (SYNC)
+    Rates: 11025
+    Bits: 16
+    Channel map: MONO
+  Interface 2
+    Altset 17
+    Format: S8
+    Channels: 2
+    Endpoint: 4 IN (SYNC)
+    Rates: 11025
+    Bits: 8
+    Channel map: FL FR
+  Interface 2
+    Altset 18
+    Format: S8
+    Channels: 1
+    Endpoint: 4 IN (SYNC)
+    Rates: 11025
+    Bits: 8
+    Channel map: MONO
+`
+	result = getSampleRateToChannelMap(strings.Split(content, "\n"), zMode)
+	assert.Equal(7, len(result))
+	assert.Equal(2, result[8000])
+	assert.Equal(2, result[11025])
+	assert.Equal(2, result[16000])
+	assert.Equal(2, result[22050])
+	assert.Equal(2, result[32000])
+	assert.Equal(2, result[44100])
+	assert.Equal(2, result[48000])
 }
 
 func TestExtractNames(t *testing.T) {
