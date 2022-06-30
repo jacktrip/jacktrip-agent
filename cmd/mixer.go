@@ -369,7 +369,12 @@ func getSampleRateToChannelMap(sentences []string, mode ZitaMode) map[int]int {
 								continue
 							}
 							for _, rate := range sampleRates {
-								output[rate] = n
+								currChannels, ok := output[rate]
+								if !ok {
+									output[rate] = n
+								} else {
+									output[rate] = common.Max(currChannels, n)
+								}
 							}
 						}
 					}
