@@ -34,7 +34,7 @@ type WebSocketManager struct {
 	IsInitialized    bool
 	APIOrigin        string
 	Credentials      client.AgentCredentials
-	ConfigChannel    chan client.AgentConfig
+	ConfigChannel    chan client.DeviceAgentConfig
 	HeartbeatChannel chan interface{}
 	HeartbeatPath    string
 }
@@ -111,7 +111,7 @@ func (wsm *WebSocketManager) recvConfigHandler(ctx context.Context, wg *sync.Wai
 			continue
 		}
 
-		var config client.AgentConfig
+		var config client.DeviceAgentConfig
 		if err := json.Unmarshal(message, &config); err != nil {
 			log.Error(err, "Failed to unmarshal heartbeat response")
 			continue

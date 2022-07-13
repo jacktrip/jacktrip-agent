@@ -31,6 +31,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/jacktrip/jacktrip-agent/pkg/client"
+	"github.com/jacktrip/jacktrip-agent/pkg/common"
 )
 
 const (
@@ -66,7 +67,7 @@ var ac *AutoConnector
 var soundDeviceName = ""
 var soundDeviceType = ""
 var lastDeviceStatus = "starting"
-var currentDeviceConfig client.AgentConfig
+var currentDeviceConfig client.DeviceAgentConfig
 
 // runOnDevice is used to run jacktrip-agent on a raspberry pi device
 func runOnDevice(apiOrigin string) {
@@ -126,7 +127,7 @@ func runOnDevice(apiOrigin string) {
 
 	// start sending heartbeats and updating agent configs
 	wsm := WebSocketManager{
-		ConfigChannel:    make(chan client.AgentConfig, 100),
+		ConfigChannel:    make(chan client.DeviceAgentConfig, 100),
 		HeartbeatChannel: make(chan interface{}, 100),
 		APIOrigin:        apiOrigin,
 		Credentials:      credentials,
@@ -185,10 +186,6 @@ func deviceConfigUpdateHandler(ctx context.Context, wg *sync.WaitGroup, beat *cl
 			log.Info("Stopping deviceConfigUpdateHandler")
 			return
 		case newDeviceConfig := <-wsm.ConfigChannel:
-			// just copy over parameters that we want to silently ignore
-			currentDeviceConfig.Broadcast = newDeviceConfig.Broadcast
-			currentDeviceConfig.ExpiresAt = newDeviceConfig.ExpiresAt
-
 			if firstConfig || newDeviceConfig != currentDeviceConfig {
 				// remove secrets before logging
 				sanitizedDeviceConfig := newDeviceConfig
@@ -273,7 +270,7 @@ func sendDeviceHeartbeats(ctx context.Context, wg *sync.WaitGroup, beat *client.
 }
 
 // handleDeviceUpdate handles updates to device configuratiosn
-func handleDeviceUpdate(beat *client.DeviceHeartbeat, credentials client.AgentCredentials, config client.AgentConfig, dmm *DeviceMixingManager, force bool) {
+func handleDeviceUpdate(beat *client.DeviceHeartbeat, credentials client.AgentCredentials, config client.DeviceAgentConfig, dmm *DeviceMixingManager, force bool) {
 	// update current config sooner, so that other goroutines will have the most up-to-date version
 	lastDeviceConfig := currentDeviceConfig
 	currentDeviceConfig = config
@@ -359,13 +356,13 @@ func getSoundDeviceType() string {
 }
 
 // updateALSASettings is used to update the settings for an ALSA sound card
-func updateALSASettings(config client.AgentConfig) {
+func updateALSASettings(config client.DeviceAgentConfig) {
 	var val int
 	re := regexp.MustCompile(ALSAInputSourceToken)
 	deviceCardMap := getDeviceToNumMappings()
 	for device, card := range deviceCardMap {
 		controls := getALSAControls(card)
-		// For digital bridges, set all control from AgentConfig
+		// For digital bridges, set all control from DeviceAgentConfig
 		// For analog bridges:
 		//   * if EnableUSB is false, only set the hifiberry card controls
 		//   * if EnableUSB is true, set all controls
@@ -374,25 +371,25 @@ func updateALSASettings(config client.AgentConfig) {
 				// NOTE: When setting mute controls, use the negation (because an ALSA value of 0 means mute)
 				isInputSource := re.MatchString(control)
 				if strings.HasSuffix(control, "Capture Volume") {
-					setALSAControl(card, control, volumeString(config.CaptureVolume, config.CaptureMute))
+					setALSAControl(card, control, common.VolumeString(config.CaptureVolume, config.CaptureMute))
 				} else if strings.HasSuffix(control, "Capture Switch") {
-					val = boolToInt(!config.CaptureMute)
+					val = common.BoolToInt(!config.CaptureMute)
 					setALSAControl(card, control, fmt.Sprintf("%d", val))
 				} else if strings.HasSuffix(control, "Playback Volume") {
 					// For HiFiBerry cards, always enable this "Analogue Playback Volume" option
 					if strings.Contains(device, "hifiberry") && control == "Analogue Playback Volume" {
 						setALSAControl(card, control, "100%")
 					} else if isInputSource {
-						setALSAControl(card, control, volumeString(config.MonitorVolume, config.MonitorMute))
+						setALSAControl(card, control, common.VolumeString(config.MonitorVolume, config.MonitorMute))
 					} else {
-						setALSAControl(card, control, volumeString(config.PlaybackVolume, config.PlaybackMute))
+						setALSAControl(card, control, common.VolumeString(config.PlaybackVolume, config.PlaybackMute))
 					}
 				} else if strings.HasSuffix(control, "Playback Switch") {
 					if isInputSource {
-						val = boolToInt(!config.MonitorMute)
+						val = common.BoolToInt(!config.MonitorMute)
 						setALSAControl(card, control, fmt.Sprintf("%d", val))
 					} else {
-						val = boolToInt(!config.PlaybackMute)
+						val = common.BoolToInt(!config.PlaybackMute)
 						setALSAControl(card, control, fmt.Sprintf("%d", val))
 					}
 				}

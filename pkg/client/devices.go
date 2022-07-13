@@ -1,4 +1,4 @@
-// Copyright 2020-2021 JackTrip Labs, Inc.
+// Copyright 2020-2022 JackTrip Labs, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -83,8 +83,8 @@ type ALSAConfig struct {
 	MonitorVolume int `json:"monitorVolume" db:"monitor_volume"`
 }
 
-// AgentConfig defines active configuration for an agent
-type AgentConfig struct {
+// DeviceAgentConfig defines active configuration for a device
+type DeviceAgentConfig struct {
 	DeviceConfig
 	ALSAConfig
 	ServerConfig
@@ -95,11 +95,11 @@ type AgentConfig struct {
 	// size of jitter queue buffer
 	QueueBuffer int `json:"queueBuffer" db:"queue_buffer"`
 
+	// strategy to use for the network jitter buffer
+	BufferStrategy int `json:"bufferStrategy" db:"buffer_strategy"`
+
 	// authorization token used by jacktrip-agent to access studio servers
 	AuthToken string `json:"authToken" db:"auth_token"`
-
-	// timestamp when the server will automatically be paused
-	ExpiresAt time.Time `json:"expiresAt" db:"expires_at"`
 }
 
 // PingStats defines a ping statistics to an audio server

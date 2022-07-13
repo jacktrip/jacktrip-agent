@@ -48,14 +48,18 @@ const (
 )
 
 // updateServiceConfigs is used to update config for managed systemd services
-func updateServiceConfigs(config client.AgentConfig, remoteName string) {
+func updateServiceConfigs(config client.DeviceAgentConfig, remoteName string) {
 
 	// assume auto queue unless > 0
-	jackTripExtraOpts := "-q auto"
+	bufStrategy := config.BufferStrategy
+	if bufStrategy < 1 {
+		bufStrategy = 1
+	}
+	jackTripExtraOpts := fmt.Sprintf("--bufstrategy %d", bufStrategy)
 	if config.QueueBuffer > 0 {
-		jackTripExtraOpts = fmt.Sprintf("-q %d", config.QueueBuffer)
-	} else if config.QueueBuffer < 0 {
-		jackTripExtraOpts = fmt.Sprintf("-q %d --bufstrategy 3", (config.QueueBuffer * -1))
+		jackTripExtraOpts = fmt.Sprintf("%s -q %d", jackTripExtraOpts, config.QueueBuffer)
+	} else {
+		jackTripExtraOpts = fmt.Sprintf("%s -q auto", jackTripExtraOpts)
 	}
 
 	// create config opts from templates
@@ -88,16 +92,11 @@ func updateServiceConfigs(config client.AgentConfig, remoteName string) {
 
 	receiveChannels := config.OutputChannels // audio signals from the audio server to the user, hence receiveChannels
 	sendChannels := config.InputChannels     // audio signals to the audio server from user's input, hence sendChannels
-	if config.Stereo {
-		if receiveChannels == 0 {
-			receiveChannels = 2 // default output channels is stereo
-		}
-		if sendChannels == 0 {
-			sendChannels = 1 // default input channels is mono
-		}
-	} else {
-		receiveChannels = 1
-		sendChannels = 1
+	if receiveChannels == 0 {
+		receiveChannels = 2 // default output channels is stereo
+	}
+	if sendChannels == 0 {
+		sendChannels = 1 // default input channels is mono
 	}
 
 	jackTripConfig = fmt.Sprintf(JackTripDeviceConfigTemplate, receiveChannels, sendChannels, config.Host, config.Port, config.DevicePort, remoteName, strings.TrimSpace(jackTripExtraOpts))
@@ -131,7 +130,7 @@ func updateServiceConfigs(config client.AgentConfig, remoteName string) {
 }
 
 // updateJamulusIni writes a new /tmp/jamulus.ini file using template at /var/lib/jacktrip/jamulus.ini
-func updateJamulusIni(config client.AgentConfig, remoteName string) {
+func updateJamulusIni(config client.DeviceAgentConfig, remoteName string) {
 	srcFileName := "/var/lib/jacktrip/jamulus.ini"
 	srcFile, err := os.Open(srcFileName)
 	if err != nil {
@@ -224,7 +223,7 @@ func StopZitaService(serviceName string) error {
 }
 
 // restartAllServices is used to restart all of the managed systemd services
-func restartAllServices(config client.AgentConfig) {
+func restartAllServices(config client.DeviceAgentConfig) {
 	// create dbus connection to manage systemd units
 	conn, err := dbus.New()
 	if err != nil {
