@@ -16,6 +16,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 )
 
@@ -27,10 +28,19 @@ const (
 	AgentLibDir = "/var/lib/jacktrip"
 )
 
+// GitSHA is the commit hash of the current build
+var GitSHA string
+
 // main wires everything together and starts up the Agent server
 func main() {
 	apiOrigin := flag.String("o", "https://app.jacktrip.org/api", "origin to use when constructing API endpoints")
+	version := flag.Bool("v", false, "display version and exit")
 	flag.Parse()
+
+	if *version {
+		fmt.Printf("Git SHA: %s\n", GitSHA)
+		return
+	}
 
 	// require this be run as root
 	if os.Geteuid() != 0 {

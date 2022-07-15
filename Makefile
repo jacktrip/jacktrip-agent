@@ -12,18 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+GIT_SHA = `git rev-parse --short=12 HEAD`
+
 .PHONY: all agent fmt lint
 
 all: lint fmt agent-amd64 agent-arm
 
 local:
-	@go build -o jacktrip-agent ./cmd
+	@go build -ldflags "-X main.GitSHA=${GIT_SHA}" -o jacktrip-agent ./cmd
 
 agent-amd64:
-	@docker buildx build --platform linux/amd64 --target=artifact --output type=local,dest=./ .
+	@docker buildx build --build-arg GIT_SHA=${GIT_SHA} --platform linux/amd64 --target=artifact --output type=local,dest=./ .
 
 agent-arm:
-	@docker buildx build --platform linux/arm/v7 --target=artifact --output type=local,dest=./ .
+	@docker buildx build --build-arg GIT_SHA=${GIT_SHA} --platform linux/arm/v7 --target=artifact --output type=local,dest=./ .
 
 fmt:
 	@gofmt -l -w `find ./ -name "*.go"`
