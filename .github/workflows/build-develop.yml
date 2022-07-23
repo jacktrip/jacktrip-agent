@@ -11,13 +11,13 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
     - name: Setup QEMU
-      uses: docker/setup-qemu-action@v1
+      uses: docker/setup-qemu-action@v2
     - name: Setup docker buildx
-      uses: docker/setup-buildx-action@v1
+      uses: docker/setup-buildx-action@v2
     - name: Checkout code
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
     - name: Setup golang
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@v3
       with:
         go-version: 1.17.x
     - name: Scan hardcoded secrets
@@ -52,7 +52,7 @@ jobs:
         tar cvzf ${FILENAME} ./jacktrip-agent-arm
         sha256sum ${FILENAME} | tee -a ${FILENAME}.sha256
     - name: Archive artifacts
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: jacktrip-agent-arm
         path: jacktrip-agent-arm-*
