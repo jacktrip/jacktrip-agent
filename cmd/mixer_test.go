@@ -228,11 +228,7 @@ func TestFindBestSampleRateAndChannel(t *testing.T) {
 
 func TestGetSampleRateToChannelMap(t *testing.T) {
 	assert := assert.New(t)
-	var zMode ZitaMode
 	var content string
-
-	// Tests for mode == ZitaPlayback
-	zMode = ZitaPlayback
 
 	content = `
 Generic Blue Microphones at usb-0000:01:00.0-1.3, high speed : USB Audio
@@ -279,7 +275,11 @@ Capture:
 	Bits: 16
 	Channel map: FL FR
 `
-	result := getSampleRateToChannelMap(strings.Split(content, "\n"), zMode)
+	result := getSampleRateToChannelMap(strings.Split(content, "\n"), ZitaPlayback)
+	assert.Equal(2, len(result))
+	assert.Equal(2, result[44100])
+	assert.Equal(2, result[48000])
+	result = getSampleRateToChannelMap(strings.Split(content, "\n"), ZitaCapture)
 	assert.Equal(2, len(result))
 	assert.Equal(2, result[44100])
 	assert.Equal(2, result[48000])
@@ -309,90 +309,53 @@ Capture:
 	Bits: 16
 	Channel map: MONO	
 `
-	result = getSampleRateToChannelMap(strings.Split(content, "\n"), zMode)
+	result = getSampleRateToChannelMap(strings.Split(content, "\n"), ZitaPlayback)
 	assert.Equal(2, len(result))
 	assert.Equal(2, result[44100])
 	assert.Equal(2, result[48000])
-
-	// Tests for mode == ZitaCapture
-	zMode = ZitaCapture
-	content = `
-Generic Blue Microphones at usb-0000:01:00.0-1.1, high speed : USB Audio
-
-Playback:
-  Status: Stop
-  Interface 2
-	Altset 1
-	Format: S16_LE
-	Channels: 2
-	Endpoint: 4 OUT (ADAPTIVE)
-	Rates: 44100
-	Data packet interval: 1000 us
-	Bits: 16
-	Channel map: FL FR
-  Interface 2
-	Altset 2
-	Format: S16_LE
-	Channels: 2
-	Endpoint: 4 OUT (ADAPTIVE)
-	Rates: 48000
-	Data packet interval: 1000 us
-	Bits: 16
-	Channel map: FL FR
-
-Capture:
-  Status: Stop
-  Interface 1
-	Altset 1
-	Format: S16_LE
-	Channels: 2
-	Endpoint: 1 IN (ASYNC)
-	Rates: 44100
-	Data packet interval: 1000 us
-	Bits: 16
-	Channel map: FL FR
-  Interface 1
-	Altset 2
-	Format: S16_LE
-	Channels: 2
-	Endpoint: 1 IN (ASYNC)
-	Rates: 48000
-	Data packet interval: 1000 us
-	Bits: 16
-	Channel map: FL FR	
-`
-	result = getSampleRateToChannelMap(strings.Split(content, "\n"), zMode)
+	result = getSampleRateToChannelMap(strings.Split(content, "\n"), ZitaCapture)
 	assert.Equal(2, len(result))
-	assert.Equal(2, result[44100])
-	assert.Equal(2, result[48000])
+	assert.Equal(1, result[44100])
+	assert.Equal(1, result[48000])
 
 	content = `
-C-Media Electronics Inc. USB Audio Device at usb-0000:01:00.0-1.3, full speed : USB Audio
+GN Netcom A/S Jabra EVOLVE 20 at usb-0000:01:00.0-1.2, full speed : USB Audio
 
 Playback:
-  Status: Stop
-  Interface 1
+	Status: Running
+	Interface = 2
+	Altset = 1
+	Packet Size = 192
+	Momentary freq = 44100 Hz (0x2c.199a)
+	Interface 2
 	Altset 1
 	Format: S16_LE
 	Channels: 2
-	Endpoint: 1 OUT (ADAPTIVE)
-	Rates: 48000, 44100
+	Endpoint: 4 OUT (SYNC)
+	Rates: 8000, 16000, 32000, 44100, 48000
 	Bits: 16
-	Channel map: FL FR
 
 Capture:
-  Status: Stop
-  Interface 2
+	Status: Stop
+	Interface 1
 	Altset 1
 	Format: S16_LE
 	Channels: 1
-	Endpoint: 2 IN (SYNC)
-	Rates: 48000, 44100
+	Endpoint: 3 IN (SYNC)
+	Rates: 8000, 16000, 44100, 48000
 	Bits: 16
-	Channel map: MONO	
 `
-	result = getSampleRateToChannelMap(strings.Split(content, "\n"), zMode)
-	assert.Equal(2, len(result))
+	result = getSampleRateToChannelMap(strings.Split(content, "\n"), ZitaPlayback)
+	assert.Equal(5, len(result))
+	assert.Equal(2, result[8000])
+	assert.Equal(2, result[16000])
+	assert.Equal(2, result[32000])
+	assert.Equal(2, result[44100])
+	assert.Equal(2, result[48000])
+	result = getSampleRateToChannelMap(strings.Split(content, "\n"), ZitaCapture)
+	assert.Equal(4, len(result))
+	assert.Equal(1, result[8000])
+	assert.Equal(1, result[16000])
 	assert.Equal(1, result[44100])
 	assert.Equal(1, result[48000])
 
@@ -410,7 +373,9 @@ Capture:
 	Bits: 16
 	Channel map: FL FR
 `
-	result = getSampleRateToChannelMap(strings.Split(content, "\n"), zMode)
+	result = getSampleRateToChannelMap(strings.Split(content, "\n"), ZitaPlayback)
+	assert.Equal(0, len(result))
+	result = getSampleRateToChannelMap(strings.Split(content, "\n"), ZitaCapture)
 	assert.Equal(1, len(result))
 	assert.Equal(2, result[44100])
 
@@ -615,7 +580,12 @@ Capture:
     Bits: 8
     Channel map: MONO
 `
-	result = getSampleRateToChannelMap(strings.Split(content, "\n"), zMode)
+	result = getSampleRateToChannelMap(strings.Split(content, "\n"), ZitaPlayback)
+	assert.Equal(3, len(result))
+	assert.Equal(2, result[32000])
+	assert.Equal(2, result[44100])
+	assert.Equal(2, result[48000])
+	result = getSampleRateToChannelMap(strings.Split(content, "\n"), ZitaCapture)
 	assert.Equal(7, len(result))
 	assert.Equal(2, result[8000])
 	assert.Equal(2, result[11025])
@@ -768,6 +738,15 @@ func TestParseSampleRates(t *testing.T) {
 	result := parseSampleRates(line)
 	assert.Equal(1, len(result))
 	assert.Contains(result, 44100)
+
+	line = "Rates: 8000, 16000, 32000, 44100, 48000"
+	result = parseSampleRates(line)
+	assert.Equal(5, len(result))
+	assert.Contains(result, 8000)
+	assert.Contains(result, 16000)
+	assert.Contains(result, 32000)
+	assert.Contains(result, 44100)
+	assert.Contains(result, 48000)
 
 	line = "Rates: 48000, 44100"
 	result = parseSampleRates(line)
