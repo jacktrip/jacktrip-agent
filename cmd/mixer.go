@@ -418,12 +418,13 @@ func extractCardNum(target string) map[string]int {
 // parseSampleRates parses the sample rate(s) line of an ALSA card from `/proc/asound/card%d/stream0`
 func parseSampleRates(line string) []int {
 	sampleRates := []int{}
-	r := regexp.MustCompile(`Rates: (\d+)(?:,\s(\d+))?`)
-	rates := r.FindStringSubmatch(line)
-	if len(rates) <= 1 {
+	r := regexp.MustCompile(`Rates: (.*)`)
+	match := r.FindStringSubmatch(line)
+	if len(match) <= 1 {
 		return sampleRates
 	}
-	for _, rate := range rates[1:] {
+	rates := strings.Split(match[1], ", ")
+	for _, rate := range rates {
 		currSampleRate, err := strconv.Atoi(rate)
 		if err != nil {
 			continue
