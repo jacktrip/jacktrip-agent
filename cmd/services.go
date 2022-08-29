@@ -59,7 +59,13 @@ func updateServiceConfigs(config client.DeviceAgentConfig, remoteName string) {
 	if config.QueueBuffer > 0 {
 		jackTripExtraOpts = fmt.Sprintf("%s -q %d", jackTripExtraOpts, config.QueueBuffer)
 	} else {
-		jackTripExtraOpts = fmt.Sprintf("%s -q auto", jackTripExtraOpts)
+		if config.BufferStrategy == 3 {
+			// apparently this requires an integer after "auto" for it to work properly
+			// the integer represents the number of milliseconds of headroom that is added and the recommendation is 3
+			jackTripExtraOpts = fmt.Sprintf("%s -q auto3", jackTripExtraOpts)
+		} else {
+			jackTripExtraOpts = fmt.Sprintf("%s -q auto", jackTripExtraOpts)
+		}
 	}
 
 	// create config opts from templates
