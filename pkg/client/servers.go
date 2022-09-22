@@ -30,9 +30,6 @@ const (
 	// JackTrip server (https://github.com/jacktrip/jacktrip)
 	JackTrip ServerType = "JackTrip"
 
-	// Jamulus server (https://github.com/corrados/jamulus)
-	Jamulus ServerType = "Jamulus"
-
 	// JackTripJamulus means both JackTrip AND Jamulus server
 	JackTripJamulus ServerType = "JackTrip+Jamulus"
 
