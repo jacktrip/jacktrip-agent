@@ -24,7 +24,6 @@ import (
 func TestConstants(t *testing.T) {
 	assert := assert.New(t)
 	assert.Equal(ServerType("JackTrip"), JackTrip)
-	assert.Equal(ServerType("Jamulus"), Jamulus)
 	assert.Equal(ServerType("JackTrip+Jamulus"), JackTripJamulus)
 }
 

@@ -262,8 +262,6 @@ func restartAllServices(config client.DeviceAgentConfig) {
 	switch config.Type {
 	case client.JackTrip:
 		servicesToStart = []string{JackServiceName, JackTripServiceName}
-	case client.Jamulus:
-		servicesToStart = []string{JackServiceName, JamulusServiceName}
 	case client.JackTripJamulus:
 		switch config.Quality {
 		case 0:
