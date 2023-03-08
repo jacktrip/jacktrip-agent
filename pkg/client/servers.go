@@ -36,17 +36,17 @@ const (
 	// JackTripJamulus means both JackTrip AND Jamulus server
 	JackTripJamulus ServerType = "JackTrip+Jamulus"
 
-	// Offline means broadcasting/recording is disabled
+	// Offline means both broadcasting + recording are disabled
 	Offline BroadcastVisibility = 0
 
-	// BroadcastAndRecord means broadcasting/recording is enabled
-	BroadcastAndRecord BroadcastVisibility = 1
+	// BroadcastPublic means broadcasting is enabled for anyone
+	BroadcastPublic BroadcastVisibility = 1
 
-	// BroadcastOnly means broadcasting is enabled for those with the link, but recording is disabled
-	BroadcastOnly BroadcastVisibility = 2
+	// BroadcastUnlisted means broadcasting is enabled for those with the link
+	BroadcastUnlisted BroadcastVisibility = 2
 
-	// RecordOnly means broadcasting is disabled but recording is enabled
-	RecordOnly BroadcastVisibility = 3
+	// PrivateRecord means broadcasting is disabled but recording is enabled
+	PrivateRecord BroadcastVisibility = 3
 )
 
 // ServerConfig defines configuration for a particular server
