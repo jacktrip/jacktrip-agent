@@ -61,7 +61,7 @@ func TestServerAgentConfig(t *testing.T) {
 	assert.Equal(96000, target.SampleRate)
 	assert.Equal(true, bool(target.Public))
 	assert.Equal(true, bool(target.Enabled))
-	assert.Equal(BroadcastPublic, target.Broadcast)
+	assert.Equal(BroadcastPublicWOStemWOVideo, target.Broadcast)
 	assert.Equal("main", target.MixBranch)
 	assert.Equal("echo hi", target.MixCode)
 }

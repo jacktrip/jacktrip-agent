@@ -39,14 +39,41 @@ const (
 	// Offline means both broadcasting + recording are disabled
 	Offline BroadcastVisibility = 0
 
-	// BroadcastPublic means broadcasting is enabled for anyone
-	BroadcastPublic BroadcastVisibility = 1
+	// BroadcastPublicWOStemWOVideo means broadcasting is enabled for anyone (w/o stems, w/o video)
+	BroadcastPublicWOStemWOVideo BroadcastVisibility = 1
 
-	// BroadcastUnlisted means broadcasting is enabled for those with the link
-	BroadcastUnlisted BroadcastVisibility = 2
+	// BroadcastUnlistedWOStemWOVideo means broadcasting is enabled for those with the link (w/o stems, w/o video)
+	BroadcastUnlistedWOStemWOVideo BroadcastVisibility = 2
 
-	// PrivateRecord means broadcasting is disabled but recording is enabled
-	PrivateRecord BroadcastVisibility = 3
+	// PrivateRecordWOStemWOVideo means broadcasting is disabled but recording is enabled (w/o stems, w/o video)
+	PrivateRecordWOStemWOVideo BroadcastVisibility = 3
+
+	// BroadcastPublicWStemWOVideo means broadcasting is enabled for anyone (w/ stems, w/o video)
+	BroadcastPublicWStemWOVideo BroadcastVisibility = 4
+
+	// BroadcastPublicWOStemWVideo means broadcasting is enabled for anyone (w/o stems, w/ video)
+	BroadcastPublicWOStemWVideo BroadcastVisibility = 5
+
+	// BroadcastPublicWStemWVideo means broadcasting is enabled for anyone (w/ stems, w/ video)
+	BroadcastPublicWStemWVideo BroadcastVisibility = 6
+
+	// BroadcastUnlistedWStemWOVideo means broadcasting is enabled for those with the link (w/ stems, w/o video)
+	BroadcastUnlistedWStemWOVideo BroadcastVisibility = 7
+
+	// BroadcastUnlistedWOStemWVideo means broadcasting is enabled for those with the link (w/o stems, w/ video)
+	BroadcastUnlistedWOStemWVideo BroadcastVisibility = 8
+
+	// BroadcastUnlistedWStemWVideo means broadcasting is enabled for those with the link (w/ stems, w/ video)
+	BroadcastUnlistedWStemWVideo BroadcastVisibility = 9
+
+	// PrivateRecordWStemWOVideo means broadcasting is disabled but recording is enabled (w/ stems, w/o video)
+	PrivateRecordWStemWOVideo BroadcastVisibility = 10
+
+	// PrivateRecordWOStemWVideo means broadcasting is disabled but recording is enabled (w/o stems, w/ video)
+	PrivateRecordWOStemWVideo BroadcastVisibility = 11
+
+	// PrivateRecordWStemWVideo means broadcasting is disabled but recording is enabled (w/ stems, w/ video)
+	PrivateRecordWStemWVideo BroadcastVisibility = 12
 )
 
 // ServerConfig defines configuration for a particular server
