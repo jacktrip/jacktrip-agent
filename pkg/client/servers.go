@@ -76,6 +76,43 @@ const (
 	PrivateRecordWStemWVideo BroadcastVisibility = 12
 )
 
+// IsStemEnabled checks if stem recordings are enabled
+func IsStemEnabled(vis BroadcastVisibility) bool {
+	return vis == BroadcastPublicWStemWOVideo || vis == BroadcastPublicWStemWVideo ||
+		vis == BroadcastUnlistedWStemWOVideo || vis == BroadcastUnlistedWStemWVideo ||
+		vis == PrivateRecordWStemWOVideo || vis == PrivateRecordWStemWVideo
+}
+
+// IsVideoEnabled checks if video is enabled
+func IsVideoEnabled(vis BroadcastVisibility) bool {
+	return vis == BroadcastPublicWOStemWVideo || vis == BroadcastPublicWStemWVideo ||
+		vis == BroadcastUnlistedWOStemWVideo || vis == BroadcastUnlistedWStemWVideo ||
+		vis == PrivateRecordWOStemWVideo || vis == PrivateRecordWStemWVideo
+}
+
+// IsStreamPublic checks if the HLS stream is public
+func IsStreamPublic(vis BroadcastVisibility) bool {
+	return vis == BroadcastPublicWOStemWOVideo || vis == BroadcastPublicWOStemWVideo ||
+		vis == BroadcastPublicWStemWOVideo || vis == BroadcastPublicWStemWVideo
+}
+
+// IsStreamUnlisted checks if the HLS stream is unlisted
+func IsStreamUnlisted(vis BroadcastVisibility) bool {
+	return vis == BroadcastUnlistedWOStemWOVideo || vis == BroadcastUnlistedWOStemWVideo ||
+		vis == BroadcastUnlistedWStemWOVideo || vis == BroadcastUnlistedWStemWVideo
+}
+
+// IsStreamEnabled checks if the HLS stream is enabled
+func IsStreamEnabled(vis BroadcastVisibility) bool {
+	return IsStreamPublic(vis) || IsStreamUnlisted(vis)
+}
+
+// IsPrivateRecording checks if private recording is enabled
+func IsPrivateRecording(vis BroadcastVisibility) bool {
+	return vis == PrivateRecordWOStemWOVideo || vis == PrivateRecordWOStemWVideo ||
+		vis == PrivateRecordWStemWOVideo || vis == PrivateRecordWStemWVideo
+}
+
 // ServerConfig defines configuration for a particular server
 type ServerConfig struct {
 	// type of server
