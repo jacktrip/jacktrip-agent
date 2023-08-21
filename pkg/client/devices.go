@@ -127,6 +127,9 @@ type PingStats struct {
 
 	// timestamp when the device stats were last updated
 	StatsUpdatedAt time.Time `json:"stats_updated_at" db:"stats_updated_at"`
+
+	// HighLatency is a boolean flag that indicates whether a device is using a high latency input / output
+	HighLatency bool `json:"high_latency" db:"high_latency"`
 }
 
 // AgentCredentials defines authentication credentials for an agent
