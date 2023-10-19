@@ -130,6 +130,9 @@ type PingStats struct {
 
 	// HighLatency is a boolean flag that indicates whether a device is using a high latency input / output
 	HighLatency bool `json:"high_latency" db:"high_latency"`
+
+	// NetworkOutage is a boolean flag that indicates whether a device is experiencing an unstable network connection
+	NetworkOutage bool `json:"network_outage" db:"network_outage"`
 }
 
 // AgentCredentials defines authentication credentials for an agent
