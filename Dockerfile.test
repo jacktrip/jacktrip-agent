@@ -1,0 +1,22 @@
+FROM golang:1.22-bullseye AS builder
+
+WORKDIR /go/src/github.com/jacktriplabs/vs-agent/
+
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y libjack-jackd2-dev \
+    && go install gotest.tools/gotestsum@latest
+
+COPY go.mod go.sum ./
+
+RUN go mod download
+
+COPY cmd ./cmd
+COPY pkg ./pkg
+
+RUN mkdir -p artifacts \
+    && gofmt -l -w `find ./ -name "*.go"` \
+	&& gotestsum -f standard-verbose --junitfile artifacts/results-small.xml -- -coverprofile=artifacts/coverage.out -tags=unit ./...
+
+FROM scratch AS artifact
+
+COPY --from=builder /go/src/github.com/jacktriplabs/vs-agent/artifacts/* /

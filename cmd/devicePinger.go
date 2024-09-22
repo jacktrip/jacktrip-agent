@@ -46,7 +46,10 @@ func MeasurePingStats(beat *client.DeviceHeartbeat, apiOrigin, host, token strin
 		pinger.Count = HeartbeatInterval
 		pinger.Interval = time.Second
 		pinger.Timeout = HeartbeatInterval * time.Second
-		pinger.Run() // blocking until done
+		err = pinger.Run() // blocking until done
+		if err != nil {
+			log.Error(err, "pinger returned error")
+		}
 		updateICMPPing(beat, pinger.Statistics())
 		log.V(1).Info("Updated device heartbeat with ICMP ping result")
 		return
@@ -65,7 +68,11 @@ func MeasurePingStats(beat *client.DeviceHeartbeat, apiOrigin, host, token strin
 			return
 		}
 
-		c.SetReadDeadline(time.Now().Add(1 * time.Second))
+		err = c.SetReadDeadline(time.Now().Add(1 * time.Second))
+		if err != nil {
+			log.Error(err, "failed to set read deadline for device websocket")
+
+		}
 		_, message, err := c.ReadMessage()
 		if err != nil {
 			log.Error(err, "Could not read the message from the audio server")

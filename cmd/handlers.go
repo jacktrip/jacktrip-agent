@@ -61,7 +61,7 @@ func handlePingRequest(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"OK"}`))
+		_, _ = w.Write([]byte(`{"status":"OK"}`))
 		return
 	}
 
@@ -105,11 +105,11 @@ func RespondJSON(w http.ResponseWriter, status int, payload interface{}) {
 	response, err := json.Marshal(payload)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
+		_, _ = w.Write([]byte(err.Error()))
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(status)
-	w.Write([]byte(response))
+	_, _ = w.Write([]byte(response))
 }

@@ -1,0 +1,13 @@
+FROM golangci/golangci-lint:v1.57
+
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y libjack-jackd2-dev \
+    && mkdir /app
+
+WORKDIR /app
+
+COPY go.mod go.sum /app/
+COPY cmd /app/cmd
+COPY pkg /app/pkg
+
+RUN go mod tidy && golangci-lint run -v

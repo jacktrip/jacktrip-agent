@@ -1,4 +1,4 @@
-FROM golang:1.17 AS builder
+FROM golang:1.20-bullseye AS builder
 
 ARG GIT_SHA=dev
 

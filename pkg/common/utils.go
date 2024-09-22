@@ -37,11 +37,8 @@ const (
 
 func exponentialBackoffSleep(iteration int) {
 	desired := int(math.Pow(float64(iteration+1), float64(RetryBackoffFactor)))
-	actual := RetryBackoffMax
-	if desired*1000 < RetryBackoffMax {
-		actual = desired * 1000
-	}
-	jitter := rand.Intn(1000)
+	actual := Min(desired*100, RetryBackoffMax)
+	jitter := rand.Intn(100)
 	time.Sleep(time.Duration(actual+jitter) * time.Millisecond)
 }
 
@@ -61,12 +58,20 @@ func RetryWithBackoff(run func() error) error {
 	return nil
 }
 
-// Max returns the maximum of two integers
-func Max(a, b int) int {
-	if a < b {
-		return b
+// Min returns the smaller of two numbers
+func Min[V int | int8 | int16 | int32 | int64 | float32 | float64](x, y V) V {
+	if x < y {
+		return x
 	}
-	return a
+	return y
+}
+
+// Max returns the greater of two numbers
+func Max[V int | int8 | int16 | int32 | int64 | float32 | float64](x, y V) V {
+	if x < y {
+		return y
+	}
+	return x
 }
 
 // BoolToInt converts a boolean to an integer

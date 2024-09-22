@@ -36,7 +36,7 @@ func TestServerConfig(t *testing.T) {
 	// Parse JSON into ServerConfig struct
 	raw = `{"type": "JackTrip+Jamulus", "serverHost": "a.b.com", "serverPort": 8000, "sampleRate": 96000, "enabled": true}`
 	target = ServerConfig{}
-	json.Unmarshal([]byte(raw), &target)
+	assert.Nil(json.Unmarshal([]byte(raw), &target))
 	assert.Equal(JackTripJamulus, target.Type)
 	assert.Equal("a.b.com", target.Host)
 	assert.Equal(8000, target.Port)
@@ -52,7 +52,7 @@ func TestServerAgentConfig(t *testing.T) {
 	// Parse JSON into ServerAgentConfig struct
 	raw = `{"type": "JackTrip+Jamulus", "name": "Test Server", "mixBranch": "main", "mixCode": "echo hi", "serverHost": "a.b.com", "serverPort": 8000, "sampleRate": 96000, "broadcast": 1, "public": true, "enabled": true}`
 	target = ServerAgentConfig{}
-	json.Unmarshal([]byte(raw), &target)
+	assert.Nil(json.Unmarshal([]byte(raw), &target))
 	assert.Equal(JackTripJamulus, target.Type)
 	assert.Equal("Test Server", target.Name)
 	assert.Equal("echo hi", target.MixCode)
@@ -74,6 +74,6 @@ func TestServerHeartbeat(t *testing.T) {
 	// Parse JSON into DeviceHeartbeat struct
 	raw = `{"cloudId": "aws"}`
 	target = ServerHeartbeat{}
-	json.Unmarshal([]byte(raw), &target)
+	assert.Nil(json.Unmarshal([]byte(raw), &target))
 	assert.Equal("aws", target.CloudID)
 }

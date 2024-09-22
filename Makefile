@@ -27,11 +27,14 @@ agent-amd64:
 agent-arm:
 	@docker buildx build --build-arg GIT_SHA=${GIT_SHA} --platform linux/arm/v7 --target=artifact --output type=local,dest=./ .
 
-fmt:
-	@gofmt -l -w `find ./ -name "*.go"`
+test:
+	@docker buildx build -f Dockerfile.test --target=artifact --output type=local,dest=./artifacts .
 
 lint:
-	@golint ./...
+	@docker buildx build -f Dockerfile.lint .
+
+fmt:
+	@gofmt -l -w `find ./ -name "*.go"`
 
 # You need to disable root user logic in cmd/main.go
 run_server:

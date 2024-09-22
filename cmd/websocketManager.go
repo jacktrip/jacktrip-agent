@@ -103,7 +103,10 @@ func (wsm *WebSocketManager) recvConfigHandler(ctx context.Context, wg *sync.Wai
 		}
 
 		// read config message
-		wsm.Conn.SetReadDeadline(time.Now().Add(time.Minute * 5)) // timeout after 5 minutes
+		err := wsm.Conn.SetReadDeadline(time.Now().Add(time.Minute * 5)) // timeout after 5 minutes
+		if err != nil {
+			log.Error(err, "failed to set read deadline for config websocket")
+		}
 		_, message, err := wsm.Conn.ReadMessage()
 		if err != nil {
 			log.Error(err, "[Websocket] Error reading message. Closing the connection.")

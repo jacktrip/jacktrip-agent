@@ -7,43 +7,54 @@ on:
     - main
 
 jobs:
-  build:
-    name: Verify code
-    runs-on: ubuntu-20.04
+  secrets:
+    name: Scan secrets
+    runs-on: ubuntu-latest
     steps:
-    - name: Setup QEMU
-      uses: docker/setup-qemu-action@v2
-    - name: Setup docker buildx
-      uses: docker/setup-buildx-action@v2
     - name: Checkout code
-      uses: actions/checkout@v3
-    - name: Setup golang
-      uses: actions/setup-go@v3
-      with:
-        go-version: 1.17.x
+      uses: actions/checkout@v4
     - name: Scan hardcoded secrets
-      uses: max/secret-scan@master
+      uses: secret-scanner/action@0.2.1
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Run lint
+      uses: docker/build-push-action@v5
       with:
-        exclude_path: '.github/workflows/secret-scan-denylist.txt'
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libjack-jackd2-dev
-    - name: Format and lint
-      run: |
-        go env -w GOFLAGS=-mod=mod
-        go get -u golang.org/x/lint/golint
-        make fmt
-        make lint
-    - name: Small tests
-      run: |
-        go env -w GOFLAGS=-mod=mod
-        go get gotest.tools/gotestsum
-        make small-tests
+        file: ./Dockerfile.lint
+        context: .
+        push: false
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Run tests
+      uses: docker/build-push-action@v5
+      with:
+        file: ./Dockerfile.test
+        outputs: type=local,dest=./artifacts
+        context: .
+        push: false
     - name: Report
-      uses: mikepenz/action-junit-report@v2
+      uses: mikepenz/action-junit-report@v4
       with:
         check_name: Small tests
         report_paths: 'artifacts/results-small.xml'
-    - name: Build
-      run: make agent-arm
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Build jacktrip-agent
+      uses: docker/build-push-action@v5
+      with:
+        file: ./Dockerfile
+        outputs: type=local,dest=./artifacts
+        context: .
+        push: false
