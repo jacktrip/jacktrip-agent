@@ -33,6 +33,18 @@ func TestMax(t *testing.T) {
 	assert.Equal(1, Max(1, 0))
 }
 
+func TestMin(t *testing.T) {
+	assert := assert.New(t)
+
+	assert.Equal(1, Min(1, 1))
+	assert.Equal(1, Min(1, 3))
+	assert.Equal(1, Min(3, 1))
+	assert.Equal(2, Min(5, 2))
+	assert.Equal(2, Min(2, 5))
+	assert.Equal(0, Min(0, 1))
+	assert.Equal(0, Min(1, 0))
+}
+
 func TestBoolToInt(t *testing.T) {
 	assert := assert.New(t)
 
