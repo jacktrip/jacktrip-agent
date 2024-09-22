@@ -5,6 +5,9 @@ on:
     branches:
     - develop
     - main
+  push:
+    branches:
+    - develop
 
 jobs:
   secrets:
@@ -51,10 +54,18 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    - name: Build jacktrip-agent
-      uses: docker/build-push-action@v5
+    - name: Setup QEMU
+      uses: docker/setup-qemu-action@v2
+    - name: Build
+      run: |
+        make agent-arm
+        GIT_SHA=`git rev-parse --short=12 HEAD`
+        FILENAME=jacktrip-agent-arm-${GIT_SHA}.tar.gz
+        tar cvzf ${FILENAME} ./jacktrip-agent-arm
+        sha256sum ${FILENAME} | tee -a ${FILENAME}.sha256
+    - name: Archive artifacts
+      if: github.event_name != 'pull_request'
+      uses: actions/upload-artifact@v3
       with:
-        file: ./Dockerfile
-        outputs: type=local,dest=./artifacts
-        context: .
-        push: false
+        name: jacktrip-agent-arm
+        path: jacktrip-agent-arm-*
