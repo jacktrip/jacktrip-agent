@@ -156,7 +156,7 @@ func runOnDevice(apiOrigin string) {
 
 	// start sending heartbeats and updating agent configs
 	wg.Add(1)
-	go sendDeviceHeartbeats(ctx, &wg, &beat, &wsm, &dmm)
+	go sendDeviceHeartbeats(ctx, &wg, &beat, &wsm)
 
 	// Start a config handler to update config changes
 	wg.Add(1)
@@ -205,7 +205,7 @@ func deviceConfigUpdateHandler(ctx context.Context, wg *sync.WaitGroup, beat *cl
 }
 
 // sendDeviceHeartbeats sends device heartbeat messages to the backend api, and receives config updates
-func sendDeviceHeartbeats(ctx context.Context, wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager, dmm *DeviceMixingManager) {
+func sendDeviceHeartbeats(ctx context.Context, wg *sync.WaitGroup, beat *client.DeviceHeartbeat, wsm *WebSocketManager) {
 	defer wg.Done()
 	log.Info("Starting sendDeviceHeartbeats")
 	firstHeartbeat := true
@@ -475,7 +475,7 @@ func updateDeviceStatus(beat client.DeviceHeartbeat, credentials client.AgentCre
 }
 
 // handleDeviceInfoRequest returns information about a device
-func handleDeviceInfoRequest(mac string, credentials client.AgentCredentials, w http.ResponseWriter, r *http.Request) {
+func handleDeviceInfoRequest(mac string, credentials client.AgentCredentials, w http.ResponseWriter, _ *http.Request) {
 	apiHash := client.GetAPIHash(credentials.APISecret)
 	deviceInfo := struct {
 		APIPrefix string `json:"apiPrefix"`
@@ -490,7 +490,7 @@ func handleDeviceInfoRequest(mac string, credentials client.AgentCredentials, w 
 }
 
 // handleDeviceRedirect redirects all requests to devices in jacktrip web application
-func handleDeviceRedirect(mac string, credentials client.AgentCredentials, w http.ResponseWriter, r *http.Request) {
+func handleDeviceRedirect(mac string, credentials client.AgentCredentials, w http.ResponseWriter, _ *http.Request) {
 	apiHash := client.GetAPIHash(credentials.APISecret)
 	w.Header().Set("Location", fmt.Sprintf(DevicesRedirectURL, mac, credentials.APIPrefix, apiHash))
 	w.Header().Set("Access-Control-Allow-Origin", "*")
