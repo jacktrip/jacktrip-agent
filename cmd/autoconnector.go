@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/jacktrip/jacktrip-agent/pkg/common"
+	"github.com/jacktrip/jacktrip-agent/pkg/jackutils"
 	"github.com/xthexder/go-jack"
 )
 
@@ -230,11 +231,11 @@ func (ac *AutoConnector) connect(portID jack.PortId) error {
 	ac.ClientLock.Lock()
 	defer ac.ClientLock.Unlock()
 	if ac.JackClient == nil {
-		if err := common.WaitForJackd(); err != nil {
+		if err := jackutils.WaitForJackd(); err != nil {
 			log.Error(err, "Unable to find JACK daemon")
 			return err
 		}
-		client, err := common.InitJackClient(ac.Name, ac.handlePortRegistration, ac.onShutdown, nil, nil, false)
+		client, err := jackutils.InitJackClient(ac.Name, ac.handlePortRegistration, ac.onShutdown, nil, nil, false)
 		if err != nil {
 			log.Error(err, "Unable to initialize JACK client")
 			return err
@@ -271,11 +272,11 @@ func (ac *AutoConnector) TeardownClient() {
 func (ac *AutoConnector) SetupClient() {
 	ac.ClientLock.Lock()
 	defer ac.ClientLock.Unlock()
-	if err := common.WaitForJackd(); err != nil {
+	if err := jackutils.WaitForJackd(); err != nil {
 		log.Error(err, "Unable to find JACK daemon")
 		panic(err)
 	}
-	client, err := common.InitJackClient(ac.Name, ac.handlePortRegistration, ac.onShutdown, nil, nil, false)
+	client, err := jackutils.InitJackClient(ac.Name, ac.handlePortRegistration, ac.onShutdown, nil, nil, false)
 	if err != nil {
 		log.Error(err, "Unable to initialize JACK client")
 		panic(err)
