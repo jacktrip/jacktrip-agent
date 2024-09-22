@@ -30,7 +30,7 @@ func TestDeviceConfig(t *testing.T) {
 	// Parse JSON into DeviceConfig struct
 	raw = `{"devicePort": 8000, "reverb": 42, "limiter": true, "compressor": false, "quality": 2}`
 	target = DeviceConfig{}
-	json.Unmarshal([]byte(raw), &target)
+	assert.Nil(json.Unmarshal([]byte(raw), &target))
 	assert.Equal(8000, target.DevicePort)
 	assert.Equal(42, target.Reverb)
 	assert.Equal(false, bool(target.EnableUSB))
@@ -40,7 +40,7 @@ func TestDeviceConfig(t *testing.T) {
 
 	raw = `{"devicePort": 8001, "reverb": 99, "limiter": false, "compressor": true, "enableUsb": true, "quality": 1}`
 	target = DeviceConfig{}
-	json.Unmarshal([]byte(raw), &target)
+	assert.Nil(json.Unmarshal([]byte(raw), &target))
 	assert.Equal(8001, target.DevicePort)
 	assert.Equal(99, target.Reverb)
 	assert.Equal(true, bool(target.EnableUSB))
@@ -55,9 +55,9 @@ func TestALSAConfig(t *testing.T) {
 	var target ALSAConfig
 
 	// Parse JSON into ALSAConfig struct
-	raw = `{"captureBoost": true, "playbackBoost": 0, "captureVolume": 100, "captureMute": true, "playbackVolume": 0, "playbackMute": false, "monitorVolume": 51, "monitorMute": true}`
+	raw = `{"captureBoost": true, "playbackBoost": false, "captureVolume": 100, "captureMute": true, "playbackVolume": 0, "playbackMute": false, "monitorVolume": 51, "monitorMute": true}`
 	target = ALSAConfig{}
-	json.Unmarshal([]byte(raw), &target)
+	assert.Nil(json.Unmarshal([]byte(raw), &target))
 	assert.Equal(true, bool(target.CaptureBoost))
 	assert.Equal(false, bool(target.PlaybackBoost))
 	assert.Equal(100, target.CaptureVolume)
@@ -76,7 +76,7 @@ func TestPingStats(t *testing.T) {
 	// Parse JSON into PingStats struct
 	raw = `{"pkts_recv": 832, "pkts_sent": 3, "min_rtt": 3, "max_rtt": -5, "avg_rtt": 301, "stddev_rtt": -10291, "stats_updated_at": "2021-08-11T10:28:32.487013776Z"}`
 	target = PingStats{}
-	json.Unmarshal([]byte(raw), &target)
+	assert.Nil(json.Unmarshal([]byte(raw), &target))
 	assert.Equal(832, target.PacketsRecv)
 	assert.Equal(3, target.PacketsSent)
 	assert.Equal(time.Duration(3), target.MinRtt)
@@ -92,9 +92,9 @@ func TestDeviceAgentConfig(t *testing.T) {
 	var target DeviceAgentConfig
 
 	// Parse JSON into DeviceAgentConfig struct
-	raw = `{"period": 3, "queueBuffer": 128, "devicePort": 8000, "reverb": 42, "limiter": true, "compressor": 0, "quality": 2, "captureBoost": true, "playbackBoost": 0, "captureVolume": 100, "playbackVolume": 0, "type": "JackTrip+Jamulus", "serverHost": "a.b.com", "serverPort": 8000, "sampleRate": 96000, "inputChannels": 2, "outputChannels": 2, "enabled": true, "authToken": "foobar", "broadcast": 1, "expiresAt": "2020-04-09T13:00:00Z"}`
+	raw = `{"period": 3, "queueBuffer": 128, "devicePort": 8000, "reverb": 42, "limiter": true, "compressor": false, "quality": 2, "captureBoost": true, "playbackBoost": true, "captureVolume": 100, "playbackVolume": 0, "type": "JackTrip+Jamulus", "serverHost": "a.b.com", "serverPort": 8000, "sampleRate": 96000, "inputChannels": 2, "outputChannels": 2, "enabled": true, "authToken": "foobar", "broadcast": 1, "expiresAt": "2020-04-09T13:00:00Z"}`
 	target = DeviceAgentConfig{}
-	json.Unmarshal([]byte(raw), &target)
+	assert.Nil(json.Unmarshal([]byte(raw), &target))
 	assert.Equal(3, target.Period)
 	assert.Equal(128, target.QueueBuffer)
 	assert.Equal(8000, target.DevicePort)
@@ -103,7 +103,7 @@ func TestDeviceAgentConfig(t *testing.T) {
 	assert.Equal(false, bool(target.Compressor))
 	assert.Equal(2, target.Quality)
 	assert.Equal(true, bool(target.CaptureBoost))
-	assert.Equal(false, bool(target.PlaybackBoost))
+	assert.Equal(true, bool(target.PlaybackBoost))
 	assert.Equal(100, target.CaptureVolume)
 	assert.Equal(0, target.PlaybackVolume)
 	assert.Equal(JackTripJamulus, target.Type)
@@ -124,7 +124,7 @@ func TestAgentCredentials(t *testing.T) {
 	// Parse JSON into AgentCredentials struct
 	raw = `{"apiPrefix": "black", "apiSecret": "pink"}`
 	target = AgentCredentials{}
-	json.Unmarshal([]byte(raw), &target)
+	assert.Nil(json.Unmarshal([]byte(raw), &target))
 	assert.Equal("black", target.APIPrefix)
 	assert.Equal("pink", target.APISecret)
 }
@@ -143,7 +143,7 @@ func TestDeviceHeartbeat(t *testing.T) {
 	// Parse JSON into DeviceHeartbeat struct
 	raw = `{"mac": "00:1B:44:11:3A:B7", "version": "1.0.0", "type": "snd_rpi_hifiberry_dacplusadcpro", "pkts_recv": 832, "pkts_sent": 3, "min_rtt": 3, "max_rtt": -5, "avg_rtt": 301, "stddev_rtt": -10291, "stats_updated_at": "2021-08-11T10:28:32.487013776Z"}`
 	target = DeviceHeartbeat{}
-	json.Unmarshal([]byte(raw), &target)
+	assert.Nil(json.Unmarshal([]byte(raw), &target))
 	assert.Equal("00:1B:44:11:3A:B7", target.MAC)
 	assert.Equal("1.0.0", target.Version)
 	assert.Equal("snd_rpi_hifiberry_dacplusadcpro", target.Type)

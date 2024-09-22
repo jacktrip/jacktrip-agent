@@ -76,7 +76,9 @@ func (dmm *DeviceMixingManager) Reset() {
 			connectionName := fmt.Sprintf("%s-%s", ZitaCapture, device)
 			os.Remove(fmt.Sprintf(PathToZitaConfig, connectionName))
 			// Restore and cleanup ALSA state
-			restoreAlsaState(device)
+			if err := restoreAlsaState(device); err != nil {
+				log.Error(err, "failed to restore alsa state")
+			}
 			os.Remove(fmt.Sprintf(PathToAlsaState, device))
 		}
 		dmm.CurrentCaptureDevices = map[string]bool{}
@@ -91,7 +93,9 @@ func (dmm *DeviceMixingManager) Reset() {
 			connectionName := fmt.Sprintf("%s-%s", ZitaPlayback, device)
 			os.Remove(fmt.Sprintf(PathToZitaConfig, connectionName))
 			// Restore and cleanup ALSA state
-			restoreAlsaState(device)
+			if err := restoreAlsaState(device); err != nil {
+				log.Error(err, "failed to restore alsa state")
+			}
 			os.Remove(fmt.Sprintf(PathToAlsaState, device))
 		}
 		dmm.CurrentPlaybackDevices = map[string]bool{}
@@ -209,7 +213,9 @@ func (dmm *DeviceMixingManager) addActiveDevices(config client.DeviceAgentConfig
 		}
 
 		// write the current state of the device to a file
-		storeAlsaState(device)
+		if err := storeAlsaState(device); err != nil {
+			log.Error(err, "failed to store alsa state")
+		}
 
 		// establish zita <-> JACK connections
 		if err := dmm.connectZita(mode, device, config); err == nil {
@@ -234,7 +240,9 @@ func removeInactiveDevices(foundDevices, activeDevices map[string]bool, mode Zit
 	for device := range foundDevices {
 		if _, ok := activeDevices[device]; !ok {
 			serviceName := fmt.Sprintf(ZitaServiceNameTemplate, mode, device)
-			StopZitaService(serviceName)
+			if err := StopZitaService(serviceName); err != nil {
+				log.Error(err, "failed to stop zita service")
+			}
 			delete(foundDevices, device)
 		}
 	}
