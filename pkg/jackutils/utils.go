@@ -20,7 +20,7 @@ import (
 )
 
 // InitJackClient creates a new JACK client
-func InitJackClient(name string, prc jack.PortRegistrationCallback, sc jack.ShutdownCallback, pc jack.ProcessCallback, preActivationMethod func(client *jack.Client), close bool) (*jack.Client, error) {
+func InitJackClient(name string, prc jack.PortRegistrationCallback, sc jack.ShutdownCallback, pc jack.ProcessCallback, xc jack.XRunCallback, preActivationMethod func(client *jack.Client), close bool) (*jack.Client, error) {
 	client, code := jack.ClientOpen(name, jack.NoStartServer)
 	if client == nil || code != 0 {
 		err := jack.StrError(code)
@@ -36,6 +36,13 @@ func InitJackClient(name string, prc jack.PortRegistrationCallback, sc jack.Shut
 	// Set process handler
 	if pc != nil {
 		if code := client.SetProcessCallback(pc); code != 0 {
+			err := jack.StrError(code)
+			return nil, err
+		}
+	}
+	// Set xrun handler
+	if xc != nil {
+		if code := client.SetXRunCallback(xc); code != 0 {
 			err := jack.StrError(code)
 			return nil, err
 		}
@@ -66,7 +73,7 @@ func InitJackClient(name string, prc jack.PortRegistrationCallback, sc jack.Shut
 // WaitForJackd is a jack_wait reimplementation
 func WaitForJackd() error {
 	err := common.RetryWithBackoff(func() error {
-		_, err := InitJackClient("", nil, nil, nil, nil, true)
+		_, err := InitJackClient("", nil, nil, nil, nil, nil, true)
 		return err
 	})
 	if err != nil {
