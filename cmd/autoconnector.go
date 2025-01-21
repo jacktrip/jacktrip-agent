@@ -235,7 +235,7 @@ func (ac *AutoConnector) connect(portID jack.PortId) error {
 			log.Error(err, "Unable to find JACK daemon")
 			return err
 		}
-		client, err := jackutils.InitJackClient(ac.Name, ac.handlePortRegistration, ac.onShutdown, nil, nil, false)
+		client, err := jackutils.InitJackClient(ac.Name, ac.handlePortRegistration, ac.onShutdown, nil, nil, nil, false)
 		if err != nil {
 			log.Error(err, "Unable to initialize JACK client")
 			return err
@@ -276,7 +276,7 @@ func (ac *AutoConnector) SetupClient() {
 		log.Error(err, "Unable to find JACK daemon")
 		panic(err)
 	}
-	client, err := jackutils.InitJackClient(ac.Name, ac.handlePortRegistration, ac.onShutdown, nil, nil, false)
+	client, err := jackutils.InitJackClient(ac.Name, ac.handlePortRegistration, ac.onShutdown, nil, nil, nil, false)
 	if err != nil {
 		log.Error(err, "Unable to initialize JACK client")
 		panic(err)
