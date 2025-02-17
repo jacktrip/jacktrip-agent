@@ -155,3 +155,23 @@ func TestDeviceHeartbeat(t *testing.T) {
 	assert.Equal(-1*time.Duration(10291), target.StdDevRtt)
 	assert.Equal("2021-08-11 10:28:32.487013776 +0000 UTC", target.StatsUpdatedAt.String())
 }
+
+func TestStructDeviceHeartbeatWithConfig(t *testing.T) {
+	assert := assert.New(t)
+	var data string
+	var device DeviceHeartbeatWithConfig
+	// Construct using JSON
+	data = `{"id": "lmnop", "mac": "mac-address", "ownerId": "mr-rogers", "serverID": "thatserveroverthere", "version": "v1.0.0", "name": "myJacktripDevice", "period": 128, "queueBuffer": 16}`
+	device = DeviceHeartbeatWithConfig{}
+	err := json.Unmarshal([]byte(data), &device)
+	assert.Nil(err)
+	assert.Equal("lmnop", device.ID)
+	assert.Equal("mac-address", device.MAC)
+	assert.Equal("mr-rogers", device.OwnerID)
+	assert.Equal("thatserveroverthere", device.ServerID)
+	assert.Equal("v1.0.0", device.Version)
+	assert.Equal("myJacktripDevice", device.Name)
+	assert.Equal(128, device.Period)
+	assert.Equal(16, device.QueueBuffer)
+	assert.Equal(false, bool(device.EnableUSB))
+}
