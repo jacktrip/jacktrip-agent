@@ -125,6 +125,18 @@ type PingStats struct {
 	// LatestRtt is the latest rtt sent via socket ping.
 	LatestRtt time.Duration `json:"latest_rtt" db:"latest_rtt"`
 
+	// AudioInputLatency is the latest client-side audio input device latency
+	AudioInputLatency time.Duration `json:"audio_input_latency" db:"audio_input_latency"`
+
+	// AudioOutputLatency is the latest client-side audio output device latency
+	AudioOutputLatency time.Duration `json:"audio_output_latency" db:"audio_output_latency"`
+
+	// ClientBufferLatency is the latest client-side receiver buffer latency
+	ClientBufferLatency time.Duration `json:"client_buffer_latency" db:"client_buffer_latency"`
+
+	// ServerBufferLatency is the latest server-side receiver buffer latency
+	ServerBufferLatency time.Duration `json:"server_buffer_latency" db:"server_buffer_latency"`
+
 	// timestamp when the device stats were last updated
 	StatsUpdatedAt time.Time `json:"stats_updated_at" db:"stats_updated_at"`
 
@@ -161,4 +173,38 @@ type DeviceHeartbeat struct {
 
 	// Type of sound device ("snd_rpi_hifiberry_dacplusadcpro")
 	Type string `json:"type" db:"type"`
+}
+
+// DeviceHeartbeatWithConfig is used to represent ping statistics with config for an audio device
+type DeviceHeartbeatWithConfig struct {
+	PingStats
+	DeviceConfig
+	ALSAConfig
+
+	// unique identifier for an audio device
+	ID string `json:"id" db:"id"`
+
+	// MAC address of the device
+	MAC string `json:"mac" db:"mac"`
+
+	// User identifier of the device's owner
+	OwnerID string `json:"ownerId" db:"owner_id"`
+
+	// audio server that the device is connected to (may be empty)
+	ServerID string `json:"serverId" db:"server_id"`
+
+	// Current image version for the device
+	Version string `json:"version" db:"version"`
+
+	// Descriptive name for the device
+	Name string `json:"name" db:"name"`
+
+	// frames per period
+	Period int `json:"period" db:"period"`
+
+	// size of jitter queue buffer
+	QueueBuffer int `json:"queueBuffer" db:"queue_buffer"`
+
+	// strategy to use for the network jitter buffer
+	BufferStrategy int `json:"bufferStrategy" db:"buffer_strategy"`
 }

@@ -65,7 +65,7 @@ jobs:
         sha256sum ${FILENAME} | tee -a ${FILENAME}.sha256
     - name: Archive artifacts
       if: github.event_name != 'pull_request'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: jacktrip-agent-arm
         path: jacktrip-agent-arm-*
