@@ -196,6 +196,12 @@ type DeviceHeartbeatWithConfig struct {
 	// Current image version for the device
 	Version string `json:"version" db:"version"`
 
+	// ALSA device name ("sndrpihifiberry")
+	ALSAName string `json:"alsaName" db:"alsa_name"`
+
+	// ALSA device type ("snd_rpi_hifiberry_dacplusadcpro")
+	Overlay string `json:"overlay" db:"overlay"`
+
 	// Descriptive name for the device
 	Name string `json:"name" db:"name"`
 
